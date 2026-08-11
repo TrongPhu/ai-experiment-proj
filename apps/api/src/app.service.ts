@@ -3,6 +3,7 @@ import {
   BadRequestException,
   Injectable,
 } from '@nestjs/common';
+import { ChatHistoryService } from './chat-history.service';
 
 type ChatRole = 'system' | 'user' | 'assistant';
 
@@ -14,6 +15,7 @@ export interface ChatMessage {
 export interface ChatRequestDto {
   messages: ChatMessage[];
   model?: string;
+  conversationId?: string;
 }
 
 interface OllamaChatResponse {
@@ -25,6 +27,8 @@ interface OllamaChatResponse {
 
 @Injectable()
 export class AppService {
+  constructor(private readonly chatHistory: ChatHistoryService) {}
+
   private readonly ollamaBaseUrl =
     process.env.OLLAMA_BASE_URL ?? 'http://localhost:11434';
   private readonly defaultModel = process.env.OLLAMA_MODEL ?? 'gemma3:1b';
@@ -33,10 +37,20 @@ export class AppService {
   );
 
   async chat(request: ChatRequestDto) {
-    const messages = this.withDefaultSystemPrompt(
-      this.normalizeMessages(request.messages),
-    );
+    const normalizedMessages = this.normalizeMessages(request.messages);
+    const messages = this.withDefaultSystemPrompt(normalizedMessages);
     const model = request.model?.trim() || this.defaultModel;
+    const userMessage = this.getLatestUserMessage(normalizedMessages);
+    const conversationId =
+      request.conversationId?.trim() ||
+      (
+        await this.chatHistory.createConversation(
+          this.chatHistory.titleFromMessage(userMessage.content),
+          model,
+        )
+      ).id;
+
+    await this.chatHistory.addMessage(conversationId, userMessage);
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), this.requestTimeoutMs);
 
@@ -66,11 +80,19 @@ export class AppService {
         throw new BadGatewayException('Ollama response did not include text.');
       }
 
+      const assistantMessage = {
+        role: 'assistant' as const,
+        content: answer,
+      };
+
+      await this.chatHistory.addMessage(conversationId, assistantMessage, {
+        model: data.model ?? model,
+        totalDuration: data.total_duration,
+      });
+
       return {
-        message: {
-          role: 'assistant' as const,
-          content: answer,
-        },
+        conversationId,
+        message: assistantMessage,
         model: data.model ?? model,
         createdAt: data.created_at ?? new Date().toISOString(),
         totalDuration: data.total_duration,
@@ -98,6 +120,18 @@ export class AppService {
       ollamaBaseUrl: this.ollamaBaseUrl,
       defaultModel: this.defaultModel,
     };
+  }
+
+  listConversations() {
+    return this.chatHistory.listConversations();
+  }
+
+  getConversation(id: string) {
+    return this.chatHistory.getConversation(id);
+  }
+
+  deleteConversation(id: string) {
+    return this.chatHistory.softDeleteConversation(id);
   }
 
   private normalizeMessages(messages: ChatMessage[] | undefined) {
@@ -135,5 +169,17 @@ export class AppService {
       },
       ...messages,
     ];
+  }
+
+  private getLatestUserMessage(messages: ChatMessage[]) {
+    const userMessage = [...messages]
+      .reverse()
+      .find((message) => message.role === 'user');
+
+    if (!userMessage) {
+      throw new BadRequestException('messages must include a user message.');
+    }
+
+    return userMessage;
   }
 }

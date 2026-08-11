@@ -3,6 +3,8 @@
 import {
   FormEvent,
   KeyboardEvent,
+  MouseEvent,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -15,17 +17,29 @@ import {
   Code2,
   Cpu,
   Loader2,
+  MessageSquare,
   Microscope,
+  Plus,
   Send,
   Sparkles,
+  Trash2,
   User,
 } from "lucide-react";
 
 type Role = "system" | "user" | "assistant";
 
 type Message = {
+  id?: string;
   role: Role;
   content: string;
+};
+
+type Conversation = {
+  id: string;
+  title: string;
+  model: string | null;
+  createdAt: string;
+  updatedAt: string;
 };
 
 type Topic = {
@@ -90,9 +104,14 @@ const starterMessages: Message[] = [
 
 export default function Home() {
   const [messages, setMessages] = useState<Message[]>(starterMessages);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(
+    null,
+  );
   const [input, setInput] = useState("");
   const [activeTopic, setActiveTopic] = useState(topics[0].title);
   const [isLoading, setIsLoading] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
   const [error, setError] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -101,47 +120,146 @@ export default function Home() {
     [activeTopic],
   );
 
+  const requestJson = useCallback(
+    async function requestJson<T>(
+      url: string,
+      options?: RequestInit,
+    ): Promise<T> {
+    const response = await fetch(url, options);
+
+    if (!response.ok) {
+      const detail = await response.text();
+      let message = detail || `Request failed with ${response.status}`;
+
+      try {
+        const parsed = JSON.parse(detail) as { message?: unknown };
+        if (typeof parsed.message === "string") {
+          message = parsed.message;
+        }
+      } catch {
+        // Keep the raw response body when the API does not return JSON.
+      }
+
+      throw new Error(message);
+    }
+
+      return response.json() as Promise<T>;
+    },
+    [],
+  );
+
+  const loadConversations = useCallback(async () => {
+    try {
+      const data = await requestJson<Conversation[]>(`${apiUrl}/conversations`);
+      setConversations(data);
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Không tải được lịch sử hội thoại.",
+      );
+    }
+  }, [requestJson]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      void loadConversations();
+    }, 0);
+
+    return () => window.clearTimeout(timer);
+  }, [loadConversations]);
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ block: "end" });
   }, [messages, isLoading, error]);
 
-  async function sendMessage(content: string) {
+  async function openConversation(id: string) {
+    setHistoryLoading(true);
+    setError("");
+
+    try {
+      const data = await requestJson<Conversation & { messages: Message[] }>(
+        `${apiUrl}/conversations/${id}`,
+      );
+      setActiveConversationId(data.id);
+      setMessages(data.messages.length > 0 ? data.messages : starterMessages);
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Không mở được hội thoại.",
+      );
+    } finally {
+      setHistoryLoading(false);
+    }
+  }
+
+  async function deleteConversation(
+    event: MouseEvent<HTMLButtonElement>,
+    id: string,
+  ) {
+    event.stopPropagation();
+    setError("");
+
+    try {
+      await requestJson<{ ok: boolean }>(`${apiUrl}/conversations/${id}`, {
+        method: "DELETE",
+      });
+      if (activeConversationId === id) {
+        startNewChat();
+      }
+      await loadConversations();
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Không xoá được hội thoại.",
+      );
+    }
+  }
+
+  async function sendMessage(
+    content: string,
+    options?: { startNewConversation?: boolean },
+  ) {
     const text = content.trim();
     if (!text || isLoading) {
       return;
     }
 
-    const nextMessages: Message[] = [...messages, { role: "user", content: text }];
+    const conversationId = options?.startNewConversation
+      ? null
+      : activeConversationId;
+    const baseMessages = options?.startNewConversation ? starterMessages : messages;
+    const nextMessages: Message[] = [
+      ...baseMessages,
+      { role: "user", content: text },
+    ];
+
+    if (options?.startNewConversation) {
+      setActiveConversationId(null);
+    }
     setMessages(nextMessages);
     setInput("");
     setError("");
     setIsLoading(true);
 
     try {
-      const response = await fetch(`${apiUrl}/chat`, {
+      const data = await requestJson<{
+        conversationId: string;
+        message: Message;
+      }>(`${apiUrl}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: nextMessages }),
+        body: JSON.stringify({
+          conversationId,
+          messages: nextMessages,
+        }),
       });
 
-      if (!response.ok) {
-        const detail = await response.text();
-        let message = detail || `Request failed with ${response.status}`;
-
-        try {
-          const parsed = JSON.parse(detail) as { message?: unknown };
-          if (typeof parsed.message === "string") {
-            message = parsed.message;
-          }
-        } catch {
-          // Keep the raw response body when the API does not return JSON.
-        }
-
-        throw new Error(message);
-      }
-
-      const data = (await response.json()) as { message: Message };
+      setActiveConversationId(data.conversationId);
       setMessages((current) => [...current, data.message]);
+      await loadConversations();
     } catch (requestError) {
       setError(
         requestError instanceof Error
@@ -151,6 +269,18 @@ export default function Home() {
     } finally {
       setIsLoading(false);
     }
+  }
+
+  function startNewChat() {
+    setActiveConversationId(null);
+    setMessages(starterMessages);
+    setInput("");
+    setError("");
+  }
+
+  function selectTopic(topicTitle: string) {
+    setActiveTopic(topicTitle);
+    startNewChat();
   }
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -175,41 +305,134 @@ export default function Home() {
                 <div className="flex size-10 items-center justify-center rounded-md bg-[#254d3a] text-white">
                   <Sparkles size={20} aria-hidden="true" />
                 </div>
-                <div>
-                  <h1 className="text-lg font-semibold">AI Research Lab</h1>
-                  <p className="text-sm text-[#647069]">NextJS + NestJS + Ollama</p>
+                <div className="min-w-0 flex-1">
+                  <h1 className="truncate text-lg font-semibold">AI Research Lab</h1>
+                  <p className="truncate text-sm text-[#647069]">
+                    NextJS + NestJS + Ollama
+                  </p>
                 </div>
               </div>
+              <button
+                type="button"
+                onClick={startNewChat}
+                className="mt-4 flex h-10 w-full items-center justify-center gap-2 rounded-md bg-[#254d3a] text-sm font-semibold text-white transition hover:bg-[#1d3e2e]"
+              >
+                <Plus size={17} aria-hidden="true" />
+                Chat mới
+              </button>
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
-              <div className="space-y-2">
-                {topics.map((topic) => {
-                  const Icon = topic.icon;
-                  const isActive = topic.title === activeTopic;
+              <div>
+                <div className="mb-3 flex items-center justify-between">
+                  <p className="text-xs font-semibold uppercase text-[#7d6a3f]">
+                    Lịch sử
+                  </p>
+                  {historyLoading && (
+                    <Loader2
+                      className="animate-spin text-[#647069]"
+                      size={14}
+                      aria-hidden="true"
+                    />
+                  )}
+                </div>
+                <div className="space-y-2">
+                  {conversations.length === 0 ? (
+                    <p className="rounded-md border border-dashed border-[#dbe2d8] px-3 py-3 text-sm text-[#647069]">
+                      Chưa có hội thoại đã lưu.
+                    </p>
+                  ) : (
+                    conversations.map((conversation) => {
+                      const isActive = conversation.id === activeConversationId;
 
-                  return (
-                    <button
-                      key={topic.title}
-                      type="button"
-                      onClick={() => setActiveTopic(topic.title)}
-                      className={`flex w-full items-center gap-3 rounded-md border px-3 py-3 text-left transition ${
-                        isActive
-                          ? "border-[#8eb08f] bg-[#eef5ec]"
-                          : "border-transparent hover:border-[#dbe2d8] hover:bg-white"
-                      }`}
-                    >
-                      <Icon className="shrink-0 text-[#254d3a]" size={20} aria-hidden="true" />
-                      <span className="min-w-0 flex-1">
-                        <span className="block text-sm font-semibold">{topic.title}</span>
-                        <span className="block truncate text-xs text-[#647069]">
-                          {topic.description}
+                      return (
+                        <div
+                          key={conversation.id}
+                          className={`group flex w-full items-center gap-3 rounded-md border px-3 py-3 text-left transition ${
+                            isActive
+                              ? "border-[#8eb08f] bg-[#eef5ec]"
+                              : "border-transparent hover:border-[#dbe2d8] hover:bg-white"
+                          }`}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => void openConversation(conversation.id)}
+                            className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                          >
+                            <MessageSquare
+                              className="shrink-0 text-[#254d3a]"
+                              size={18}
+                              aria-hidden="true"
+                            />
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate text-sm font-semibold">
+                                {conversation.title}
+                              </span>
+                              <span className="block truncate text-xs text-[#647069]">
+                                {conversation.model ?? "local model"}
+                              </span>
+                            </span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(event) =>
+                              void deleteConversation(event, conversation.id)
+                            }
+                            className="flex size-8 shrink-0 items-center justify-center rounded-md text-[#7d877f] opacity-100 transition hover:bg-[#f2e9e2] hover:text-[#8a3a24] lg:opacity-0 lg:group-hover:opacity-100"
+                            aria-label="Xoá hội thoại"
+                            title="Xoá hội thoại"
+                          >
+                            <Trash2 size={15} aria-hidden="true" />
+                          </button>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+
+              <div className="mt-6">
+                <p className="mb-3 text-xs font-semibold uppercase text-[#7d6a3f]">
+                  Chủ đề
+                </p>
+                <div className="space-y-2">
+                  {topics.map((topic) => {
+                    const Icon = topic.icon;
+                    const isActive = topic.title === activeTopic;
+
+                    return (
+                      <button
+                        key={topic.title}
+                        type="button"
+                        onClick={() => selectTopic(topic.title)}
+                        className={`flex w-full items-center gap-3 rounded-md border px-3 py-3 text-left transition ${
+                          isActive
+                            ? "border-[#8eb08f] bg-[#eef5ec]"
+                            : "border-transparent hover:border-[#dbe2d8] hover:bg-white"
+                        }`}
+                      >
+                        <Icon
+                          className="shrink-0 text-[#254d3a]"
+                          size={20}
+                          aria-hidden="true"
+                        />
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-sm font-semibold">
+                            {topic.title}
+                          </span>
+                          <span className="block truncate text-xs text-[#647069]">
+                            {topic.description}
+                          </span>
                         </span>
-                      </span>
-                      <ChevronRight className="shrink-0 text-[#7d877f]" size={16} aria-hidden="true" />
-                    </button>
-                  );
-                })}
+                        <ChevronRight
+                          className="shrink-0 text-[#7d877f]"
+                          size={16}
+                          aria-hidden="true"
+                        />
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
 
               <div className="mt-6">
@@ -221,7 +444,9 @@ export default function Home() {
                     <button
                       key={question}
                       type="button"
-                      onClick={() => void sendMessage(question)}
+                      onClick={() =>
+                        void sendMessage(question, { startNewConversation: true })
+                      }
                       className="w-full rounded-md border border-[#dbe2d8] bg-white px-3 py-3 text-left text-sm leading-5 text-[#2b332f] transition hover:border-[#b8c9b6] hover:bg-[#f7faf5]"
                     >
                       {question}
@@ -236,9 +461,13 @@ export default function Home() {
         <section className="flex min-h-0 min-w-0 flex-1 flex-col">
           <header className="shrink-0 border-b border-[#dbe2d8] bg-white/85 px-5 py-4 backdrop-blur">
             <div className="mx-auto flex max-w-5xl items-center justify-between gap-4">
-              <div>
-                <p className="text-sm font-semibold text-[#254d3a]">Local Assistant</p>
-                <h2 className="text-xl font-semibold">Chat với model Ollama</h2>
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-[#254d3a]">
+                  Local Assistant
+                </p>
+                <h2 className="truncate text-xl font-semibold">
+                  Chat với model Ollama
+                </h2>
               </div>
               <div className="hidden rounded-md border border-[#dbe2d8] bg-[#fbfcfa] px-3 py-2 text-sm text-[#647069] sm:block">
                 API: {apiUrl}
@@ -253,7 +482,7 @@ export default function Home() {
 
                 return (
                   <article
-                    key={`${message.role}-${index}`}
+                    key={message.id ?? `${message.role}-${index}`}
                     className={`flex gap-3 ${isUser ? "justify-end" : "justify-start"}`}
                   >
                     {!isUser && (
