@@ -4,6 +4,7 @@ import {
   FormEvent,
   KeyboardEvent,
   MouseEvent,
+  Suspense,
   useCallback,
   useEffect,
   useMemo,
@@ -103,6 +104,18 @@ const starterMessages: Message[] = [
 ];
 
 export default function Home() {
+  return (
+    <Suspense fallback={null}>
+      <ChatWorkspace />
+    </Suspense>
+  );
+}
+
+export function ChatWorkspace({
+  initialConversationId = null,
+}: {
+  initialConversationId?: string | null;
+}) {
   const [messages, setMessages] = useState<Message[]>(starterMessages);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(
@@ -119,6 +132,12 @@ export default function Home() {
     () => topics.find((topic) => topic.title === activeTopic)?.questions ?? [],
     [activeTopic],
   );
+
+  const updateConversationUrl = useCallback((conversationId: string | null) => {
+    const path = conversationId ? `/conversations/${conversationId}` : "/";
+
+    window.history.pushState({}, "", path);
+  }, []);
 
   const requestJson = useCallback(
     async function requestJson<T>(
@@ -169,11 +188,10 @@ export default function Home() {
     return () => window.clearTimeout(timer);
   }, [loadConversations]);
 
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ block: "end" });
-  }, [messages, isLoading, error]);
-
-  async function openConversation(id: string) {
+  const openConversation = useCallback(async function openConversation(
+    id: string,
+    options?: { replaceUrl?: boolean },
+  ) {
     setHistoryLoading(true);
     setError("");
 
@@ -183,6 +201,9 @@ export default function Home() {
       );
       setActiveConversationId(data.id);
       setMessages(data.messages.length > 0 ? data.messages : starterMessages);
+      if (options?.replaceUrl !== false) {
+        updateConversationUrl(data.id);
+      }
     } catch (requestError) {
       setError(
         requestError instanceof Error
@@ -192,7 +213,21 @@ export default function Home() {
     } finally {
       setHistoryLoading(false);
     }
-  }
+  }, [requestJson, updateConversationUrl]);
+
+  useEffect(() => {
+    if (initialConversationId && initialConversationId !== activeConversationId) {
+      const timer = window.setTimeout(() => {
+        void openConversation(initialConversationId, { replaceUrl: false });
+      }, 0);
+
+      return () => window.clearTimeout(timer);
+    }
+  }, [activeConversationId, initialConversationId, openConversation]);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ block: "end" });
+  }, [messages, isLoading, error]);
 
   async function deleteConversation(
     event: MouseEvent<HTMLButtonElement>,
@@ -258,6 +293,7 @@ export default function Home() {
       });
 
       setActiveConversationId(data.conversationId);
+      updateConversationUrl(data.conversationId);
       setMessages((current) => [...current, data.message]);
       await loadConversations();
     } catch (requestError) {
@@ -276,6 +312,7 @@ export default function Home() {
     setMessages(starterMessages);
     setInput("");
     setError("");
+    updateConversationUrl(null);
   }
 
   function selectTopic(topicTitle: string) {
