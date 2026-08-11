@@ -1,71 +1,71 @@
 # AI Experiment Project
 
-Ung dung chat AI local dung:
+A local AI chat application built with:
 
 - Frontend: NextJS
 - Backend: NestJS
 - AI runtime: Ollama
 - Database: MySQL
 
-App luu lich su chat vao MySQL de mo lai cac hoi thoai cu giong ChatGPT/Copilot.
+The app stores chat history in MySQL so previous conversations can be reopened later, similar to ChatGPT or Copilot.
 
-## 1. Lay Source Code Tu Git
+## 1. Get The Source Code
 
-Clone project:
+Clone the project:
 
 ```bash
 git clone https://github.com/TrongPhu/ai-experiment-proj.git
 cd ai-experiment-proj
 ```
 
-Neu da co source roi thi cap nhat code moi nhat:
+If you already have the source code, update it:
 
 ```bash
 git pull origin main
 ```
 
-## 2. Cai Cong Cu Can Thiet
+## 2. Install Required Tools
 
-Kiem tra Node.js va npm:
+Check Node.js and npm:
 
 ```bash
 node -v
 npm -v
 ```
 
-Khuyen nghi dung Node.js 22+.
+Node.js 22+ is recommended.
 
-Cai dependencies:
+Install project dependencies:
 
 ```bash
 npm install
 ```
 
-Kiem tra Ollama:
+Check Ollama:
 
 ```bash
 ollama --version
 ```
 
-Pull model dang cau hinh mac dinh:
+Pull the default configured model:
 
 ```bash
 ollama pull gemma3:1b
 ```
 
-Kiem tra MySQL:
+Check MySQL:
 
 ```bash
 mysql --version
 ```
 
-MySQL phai dang chay tren host `localhost`, port `3306`.
+MySQL must be running on host `localhost`, port `3306`.
 
-Luu y: MySQL khong phai HTTP service. Dung `localhost:3306`, khong dung `http://localhost:3306`.
+Note: MySQL is not an HTTP service. Use `localhost:3306`, not `http://localhost:3306`.
 
-## 3. Cau Hinh Backend
+## 3. Configure The Backend
 
-Tao file env cho backend tu file mau.
+Create the backend env file from the example.
 
 Windows PowerShell:
 
@@ -79,7 +79,7 @@ macOS/Linux/Git Bash:
 cp apps/api/.env.example apps/api/.env
 ```
 
-Noi dung mac dinh:
+Default config:
 
 ```env
 PORT=3001
@@ -95,258 +95,270 @@ DB_NAME=ai-experiment-proj
 DB_CONNECTION_LIMIT=10
 ```
 
-Neu MySQL cua may co password, sua:
+If your MySQL user has a password, update:
 
 ```env
 DB_USER=root
-DB_PASSWORD=mat_khau_mysql_cua_may
+DB_PASSWORD=your_mysql_password
 ```
 
-Neu muon dung model Ollama khac, pull model truoc:
+If you want to use another Ollama model, pull it first:
 
 ```bash
 ollama pull llama3.2
 ```
 
-Sau do sua:
+Then update:
 
 ```env
 OLLAMA_MODEL=llama3.2
 ```
 
-## 4. Doi Open Source AI Model
+## 4. Change The Open-Source AI Model
 
-Backend khong bi khoa vao `gemma3:1b`. App goi Ollama qua bien:
+The backend is not locked to `gemma3:1b`. The app calls Ollama through this env variable:
 
 ```env
 OLLAMA_MODEL=gemma3:1b
 ```
 
-Muon dung model open-source khac thi lam 4 buoc:
+To use another open-source model:
 
-1. Tim model tren Ollama Library: https://ollama.com/library
-2. Pull model ve may
-3. Sua `OLLAMA_MODEL` trong `apps/api/.env`
+1. Find a model in the Ollama Library: https://ollama.com/library
+2. Pull the model to your machine
+3. Update `OLLAMA_MODEL` in `apps/api/.env`
 4. Restart `npm run dev`
 
-Vi du doi sang Llama:
+Example: switch to Llama:
 
 ```bash
 ollama pull llama3.2
 ```
 
-Sua `apps/api/.env`:
+Update `apps/api/.env`:
 
 ```env
 OLLAMA_MODEL=llama3.2
 ```
 
-Restart app:
+Restart the app:
 
 ```bash
 npm run dev
 ```
 
-Kiem tra model da co tren may:
+Check locally installed models:
 
 ```bash
 ollama list
 ```
 
-Kiem tra model chay truc tiep trong terminal:
+Test a model directly in the terminal:
 
 ```bash
 ollama run llama3.2
 ```
 
-### Mot So Model Nen Thu
+### Suggested Models To Try
 
-Ten model/tag tren Ollama co the thay doi theo thoi gian, nen hay check lai tren Ollama Library truoc khi pull.
+Model names and tags in Ollama can change over time, so check the Ollama Library before pulling.
 
-| Muc dich | Model goi y | Lenh pull | Ghi chu |
+| Use case | Suggested model | Pull command | Notes |
 | --- | --- | --- | --- |
-| May yeu, test nhanh | `gemma3:1b` | `ollama pull gemma3:1b` | Nhe, nhanh, chat co ban |
-| Chat tong quat | `llama3.2` | `ollama pull llama3.2` | Phu hop chatbot pho thong |
-| Chat/coding nhe | `qwen2.5-coder:1.5b` | `ollama pull qwen2.5-coder:1.5b` | Nhe, tap trung code, chat tu nhien co the kem hon model instruct |
-| Coding tot hon | `qwen2.5-coder:7b` | `ollama pull qwen2.5-coder:7b` | Can may khoe hon 1.5B |
-| Reasoning | `deepseek-r1:8b` | `ollama pull deepseek-r1:8b` | Suy luan tot hon, cham hon |
-| Chat/coding nang | `qwen3:30b` | `ollama pull qwen3:30b` | Can RAM/VRAM lon, co the rat cham tren CPU |
+| Weak machine, quick tests | `gemma3:1b` | `ollama pull gemma3:1b` | Lightweight, fast, basic chat |
+| General chat | `llama3.2` | `ollama pull llama3.2` | Good for general chatbot usage |
+| Lightweight chat/coding | `qwen2.5-coder:1.5b` | `ollama pull qwen2.5-coder:1.5b` | Small coding model; natural chat may be weaker than instruct models |
+| Better coding | `qwen2.5-coder:7b` | `ollama pull qwen2.5-coder:7b` | Requires a stronger machine than 1.5B |
+| Reasoning | `deepseek-r1:8b` | `ollama pull deepseek-r1:8b` | Better reasoning, slower responses |
+| Heavy chat/coding | `qwen3:30b` | `ollama pull qwen3:30b` | Requires large RAM/VRAM; can be very slow on CPU |
 
-### Chon Model Theo May
+### Choose A Model By Machine Size
 
-Huong dan nhanh:
+Quick guide:
 
-- RAM 8GB: thu `gemma3:1b` hoac model 1B-3B
-- RAM 16GB: thu model 7B-8B nhu `llama3.2`, `qwen2.5-coder:7b`, `deepseek-r1:8b`
-- RAM 32GB+: co the thu 14B-30B, nhung toc do phu thuoc GPU/CPU
-- Neu khong co GPU: uu tien model nho de tranh timeout
+- 8GB RAM: try `gemma3:1b` or a 1B-3B model
+- 16GB RAM: try 7B-8B models such as `llama3.2`, `qwen2.5-coder:7b`, or `deepseek-r1:8b`
+- 32GB+ RAM: you can try 14B-30B models, but speed depends heavily on GPU/CPU
+- No GPU: prefer smaller models to avoid timeouts
 
-Neu model tra loi qua lau va FE bao `502`, tang timeout trong `apps/api/.env`:
+If the model takes too long and the frontend shows `502`, increase the timeout in `apps/api/.env`:
 
 ```env
 OLLAMA_TIMEOUT_MS=600000
 ```
 
-Hoac chuyen sang model nho hon.
+Or switch to a smaller model.
 
-### Dung Model Khong Co Trong Ollama Library
+### Use A Model Not Listed In The Ollama Library
 
-Ollama co the tao model custom tu `Modelfile`. Vi du:
+Ollama can create custom models from a `Modelfile`. Example:
 
 ```bash
 ollama create my-local-model -f ./Modelfile
 ```
 
-Sau do sua backend:
+Then update the backend:
 
 ```env
 OLLAMA_MODEL=my-local-model
 ```
 
-### Quan Trong: Dung Chat/Instruct Model
+### Important: Use Chat/Instruct Models
 
-De lam chatbot, uu tien model co tag/chat behavior dang `instruct` hoac model duoc Ollama toi uu cho chat. Cac model `base` thuong khong phu hop hoi dap truc tiep, de bi tra loi lac de.
+For chatbot usage, prefer models with instruct/chat behavior or models optimized by Ollama for chat. `base` models are usually not suitable for direct Q&A and can produce off-topic answers.
 
-## 5. Tao Database Va Bang
+## 5. Create The Database And Tables
 
-Schema nam o:
+The schema file is located at:
 
 ```text
 apps/api/database/schema.sql
 ```
 
-File nay tao database `ai-experiment-proj` va 2 bang:
+This file creates the `ai-experiment-proj` database and two tables:
 
-- `chat_conversations`: luu moi hoi thoai/chat thread
-- `chat_messages`: luu tung message cua user va assistant trong hoi thoai
+- `chat_conversations`: stores one row per chat thread
+- `chat_messages`: stores user and assistant messages for each conversation
 
-### Cach 1: Chay File SQL
+### Option 1: Run The SQL File
 
-Neu user MySQL co password:
+If your MySQL user has a password:
 
 ```bash
 mysql -u root -p < apps/api/database/schema.sql
 ```
 
-Neu user MySQL khong co password:
+If your MySQL user has no password:
 
 ```bash
 mysql -u root < apps/api/database/schema.sql
 ```
 
-Neu dung user khac:
+If you use another MySQL user:
 
 ```bash
 mysql -u your_user -p < apps/api/database/schema.sql
 ```
 
-Sau do cap nhat `apps/api/.env` cho dung user/password.
+Then update `apps/api/.env` with the correct user/password.
 
-### Cach 2: Tao Database Truoc, Backend Tu Tao Bang
+### Option 2: Create The Database First, Let Backend Create Tables
 
-Backend co code `CREATE TABLE IF NOT EXISTS`, nen co the chi tao database truoc:
+The backend runs `CREATE TABLE IF NOT EXISTS`, so you can create only the database first:
 
 ```bash
 mysql -u root -p -e "CREATE DATABASE IF NOT EXISTS \`ai-experiment-proj\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
 ```
 
-Sau do chay app. Khi NestJS start, backend se tu tao cac bang neu chua co.
+Then run the app. When NestJS starts, the backend will create missing tables automatically.
 
-## 6. Chay App
+## 6. Run The App
 
-Dam bao 3 thu sau dang san sang:
+Make sure these are ready:
 
-- MySQL dang chay
-- Ollama dang chay
-- Model trong `OLLAMA_MODEL` da duoc pull
+- MySQL is running
+- Ollama is running
+- The model in `OLLAMA_MODEL` has been pulled locally
 
-Kiem tra Ollama:
+Check Ollama:
 
 ```bash
 ollama list
 ```
 
-Chay ca frontend va backend:
+Run both frontend and backend:
 
 ```bash
 npm run dev
 ```
 
-Lenh nay start dong thoi:
+This command starts:
 
 - Frontend NextJS: http://localhost:3000
 - Backend NestJS: http://localhost:3001
 
-Mo app:
+Open the app:
 
 ```text
 http://localhost:3000
 ```
 
-Kiem tra backend:
+Check the backend:
 
 ```bash
 curl http://localhost:3001/health
 ```
 
-Kiem tra danh sach hoi thoai:
+Check the conversation list:
 
 ```bash
 curl http://localhost:3001/conversations
 ```
 
-Lan dau chua chat thi ket qua la:
+If there is no chat history yet, the result is:
 
 ```json
 []
 ```
 
-## 7. Cach App Luu Lich Su Chat
+Open a conversation directly by slug:
 
-Khi gui message dau tien trong chat moi:
+```text
+http://localhost:3000/conversations/<conversation-id>
+```
 
-1. FE goi `POST /chat` va khong gui `conversationId`
-2. BE tao row moi trong `chat_conversations`
-3. BE luu message user vao `chat_messages`
-4. BE goi Ollama
-5. BE luu cau tra loi assistant vao `chat_messages`
-6. BE tra ve `conversationId` cho FE
-7. FE hien hoi thoai moi trong sidebar `Lich su`
+Example:
 
-Khi tiep tuc chat trong hoi thoai cu:
+```text
+http://localhost:3000/conversations/303b10ad-9d52-42b9-9727-d12fba9d80df
+```
 
-1. FE gui kem `conversationId`
-2. BE luu message moi vao cung hoi thoai
-3. BE cap nhat `updated_at`
-4. Sidebar sap xep hoi thoai moi cap nhat len dau
+## 7. How Chat History Works
 
-Khi bam xoa hoi thoai:
+When you send the first message in a new chat:
 
-- BE khong xoa vat ly ngay
-- BE set `deleted_at`
-- API `GET /conversations` se an hoi thoai da xoa
+1. FE calls `POST /chat` without `conversationId`
+2. BE creates a new row in `chat_conversations`
+3. BE stores the user message in `chat_messages`
+4. BE calls Ollama
+5. BE stores the assistant response in `chat_messages`
+6. BE returns `conversationId` to FE
+7. FE shows the new conversation in the `History` sidebar
 
-## 8. Quan Ly Data Trong MySQL
+When you continue an existing conversation:
 
-Mo MySQL:
+1. FE sends `conversationId`
+2. BE stores the new message in the same conversation
+3. BE updates `updated_at`
+4. The sidebar sorts the latest updated conversation first
+
+When you delete a conversation:
+
+- BE does not physically delete it immediately
+- BE sets `deleted_at`
+- `GET /conversations` hides deleted conversations
+
+## 8. Manage Data In MySQL
+
+Open MySQL:
 
 ```bash
 mysql -u root -p
 ```
 
-Chon database:
+Select the database:
 
 ```sql
 USE `ai-experiment-proj`;
 ```
 
-Xem cac bang:
+Show tables:
 
 ```sql
 SHOW TABLES;
 ```
 
-Xem danh sach hoi thoai:
+Show conversations:
 
 ```sql
 SELECT id, title, model, created_at, updated_at, deleted_at
@@ -354,39 +366,39 @@ FROM chat_conversations
 ORDER BY updated_at DESC;
 ```
 
-Xem messages cua mot hoi thoai:
+Show messages for one conversation:
 
 ```sql
 SELECT role, content, model, total_duration, created_at
 FROM chat_messages
-WHERE conversation_id = 'conversation-id-o-day'
+WHERE conversation_id = 'conversation-id-here'
 ORDER BY created_at ASC;
 ```
 
-Khoi phuc hoi thoai da xoa mem:
+Restore a soft-deleted conversation:
 
 ```sql
 UPDATE chat_conversations
 SET deleted_at = NULL
-WHERE id = 'conversation-id-o-day';
+WHERE id = 'conversation-id-here';
 ```
 
-Xoa that mot hoi thoai va toan bo messages cua no:
+Permanently delete a conversation and all of its messages:
 
 ```sql
 DELETE FROM chat_conversations
-WHERE id = 'conversation-id-o-day';
+WHERE id = 'conversation-id-here';
 ```
 
-Do `chat_messages` co foreign key `ON DELETE CASCADE`, xoa conversation se xoa luon messages lien quan.
+Because `chat_messages` has a foreign key with `ON DELETE CASCADE`, deleting a conversation also deletes its related messages.
 
-Xoa sach toan bo lich su chat:
+Delete all chat history:
 
 ```sql
 DELETE FROM chat_conversations;
 ```
 
-## 9. API Backend
+## 9. Backend API
 
 Health:
 
@@ -394,66 +406,66 @@ Health:
 GET /health
 ```
 
-Lay danh sach hoi thoai:
+List conversations:
 
 ```http
 GET /conversations
 ```
 
-Mo mot hoi thoai:
+Open one conversation:
 
 ```http
 GET /conversations/:id
 ```
 
-Xoa mem mot hoi thoai:
+Soft-delete one conversation:
 
 ```http
 DELETE /conversations/:id
 ```
 
-Gui chat:
+Send chat:
 
 ```http
 POST /chat
 ```
 
-Body tao chat moi:
+Body for a new chat:
 
 ```json
 {
   "messages": [
     {
       "role": "user",
-      "content": "RAG la gi?"
+      "content": "What is RAG?"
     }
   ]
 }
 ```
 
-Body tiep tuc chat cu:
+Body for continuing an existing chat:
 
 ```json
 {
-  "conversationId": "conversation-id-o-day",
+  "conversationId": "conversation-id-here",
   "messages": [
     {
       "role": "user",
-      "content": "RAG la gi?"
+      "content": "What is RAG?"
     },
     {
       "role": "assistant",
-      "content": "RAG la Retrieval-Augmented Generation..."
+      "content": "RAG means Retrieval-Augmented Generation..."
     },
     {
       "role": "user",
-      "content": "Cho vi du trong NestJS"
+      "content": "Show me an example in NestJS"
     }
   ]
 }
 ```
 
-## 10. Kiem Tra Truoc Khi Commit
+## 10. Verify Before Commit
 
 ```bash
 npm run lint
@@ -461,55 +473,55 @@ npm run build
 npm run test
 ```
 
-## 11. Loi Thuong Gap
+## 11. Common Issues
 
 ### Cannot GET /conversations
 
-Backend dang chay ban cu hoac chua restart sau khi them route.
+The backend is running an old version or was not restarted after routes were added.
 
-Restart lai app:
+Restart the app:
 
 ```powershell
 Get-NetTCPConnection -LocalPort 3000,3001 -State Listen | Select-Object -ExpandProperty OwningProcess -Unique | ForEach-Object { Stop-Process -Id $_ -Force }
 npm run dev
 ```
 
-### 502 Khi Chat
+### 502 When Chatting
 
-Thuong do Ollama khong chay, model khong ton tai, hoac model tra loi qua lau.
+This usually means Ollama is not running, the model does not exist locally, or the model takes too long to respond.
 
-Kiem tra:
+Check:
 
 ```bash
 ollama list
 curl http://localhost:11434/api/tags
 ```
 
-Model trong `apps/api/.env` phai co trong `ollama list`.
+The model in `apps/api/.env` must exist in `ollama list`.
 
-### Backend Khong Start Vi MySQL
+### Backend Cannot Start Because Of MySQL
 
-Kiem tra MySQL:
+Check MySQL:
 
 ```bash
 mysql -u root -p -e "SHOW DATABASES;"
 ```
 
-Kiem tra database:
+Check the database:
 
 ```bash
 mysql -u root -p -e "SHOW DATABASES LIKE 'ai-experiment-proj';"
 ```
 
-Neu database chua co:
+If the database does not exist:
 
 ```bash
 mysql -u root -p < apps/api/database/schema.sql
 ```
 
-Sau do kiem tra lai `DB_USER`, `DB_PASSWORD`, `DB_NAME` trong `apps/api/.env`.
+Then verify `DB_USER`, `DB_PASSWORD`, and `DB_NAME` in `apps/api/.env`.
 
-### Port 3000 Hoac 3001 Bi Chiem
+### Port 3000 Or 3001 Is Already In Use
 
 Windows PowerShell:
 
@@ -517,7 +529,7 @@ Windows PowerShell:
 Get-NetTCPConnection -LocalPort 3000,3001 -State Listen
 ```
 
-Tat process dang giu port:
+Stop the process holding the port:
 
 ```powershell
 Get-NetTCPConnection -LocalPort 3000,3001 -State Listen | Select-Object -ExpandProperty OwningProcess -Unique | ForEach-Object { Stop-Process -Id $_ -Force }
