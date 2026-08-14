@@ -1117,9 +1117,9 @@ export function ChatWorkspace({
                   {welcomeMessage}
                 </p>
               </div>
-              <div className="hidden rounded-md border border-[#dbe2d8] bg-[#fbfcfa] px-3 py-2 text-sm text-[#647069] sm:block">
+              {/* <div className="hidden rounded-md border border-[#dbe2d8] bg-[#fbfcfa] px-3 py-2 text-sm text-[#647069] sm:block">
                 API: {apiUrl}
-              </div>
+              </div> */}
             </div>
           </header>
 
