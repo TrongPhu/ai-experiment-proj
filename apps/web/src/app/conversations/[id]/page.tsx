@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import { ChatWorkspace } from "../../page";
+import { ChatWorkspace } from "../../components/chat-workspace";
 
 export default async function ConversationPage({
   params,

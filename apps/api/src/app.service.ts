@@ -4,6 +4,8 @@ import {
   Injectable,
 } from '@nestjs/common';
 import { ChatHistoryService } from './chat-history.service';
+import { KnowledgeService } from './knowledge.service';
+import type { CreateKnowledgeDocumentDto } from './knowledge.service';
 
 type ChatRole = 'system' | 'user' | 'assistant';
 
@@ -27,7 +29,10 @@ interface OllamaChatResponse {
 
 @Injectable()
 export class AppService {
-  constructor(private readonly chatHistory: ChatHistoryService) {}
+  constructor(
+    private readonly chatHistory: ChatHistoryService,
+    private readonly knowledge: KnowledgeService,
+  ) {}
 
   private readonly ollamaBaseUrl =
     process.env.OLLAMA_BASE_URL ?? 'http://localhost:11434';
@@ -38,9 +43,10 @@ export class AppService {
 
   async chat(request: ChatRequestDto) {
     const normalizedMessages = this.normalizeMessages(request.messages);
-    const messages = this.withDefaultSystemPrompt(normalizedMessages);
     const model = request.model?.trim() || this.defaultModel;
     const userMessage = this.getLatestUserMessage(normalizedMessages);
+    const context = await this.knowledge.search(userMessage.content);
+    const messages = this.withDefaultSystemPrompt(normalizedMessages, context);
     const conversationId =
       request.conversationId?.trim() ||
       (
@@ -134,6 +140,22 @@ export class AppService {
     return this.chatHistory.softDeleteConversation(id);
   }
 
+  listKnowledgeDocuments() {
+    return this.knowledge.listDocuments();
+  }
+
+  createKnowledgeDocument(request: CreateKnowledgeDocumentDto) {
+    return this.knowledge.createDocument(request);
+  }
+
+  deleteKnowledgeDocument(id: string) {
+    return this.knowledge.deleteDocument(id);
+  }
+
+  searchKnowledge(query: string) {
+    return this.knowledge.search(query);
+  }
+
   private normalizeMessages(messages: ChatMessage[] | undefined) {
     if (!Array.isArray(messages) || messages.length === 0) {
       throw new BadRequestException('messages must contain at least one item.');
@@ -156,16 +178,36 @@ export class AppService {
     });
   }
 
-  private withDefaultSystemPrompt(messages: ChatMessage[]) {
+  private withDefaultSystemPrompt(
+    messages: ChatMessage[],
+    context: Awaited<ReturnType<KnowledgeService['search']>>,
+  ) {
     if (messages.some((message) => message.role === 'system')) {
       return messages;
     }
 
+    const contextBlock =
+      context.length > 0
+        ? context
+            .map(
+              (item, index) =>
+                `[${index + 1}] ${item.documentTitle}\n${item.content}`,
+            )
+            .join('\n\n')
+        : 'No private knowledge context was found.';
+
     return [
       {
         role: 'system' as const,
-        content:
-          'You are a concise Vietnamese AI research assistant. Answer the user directly, avoid hallucinated news, and say when you are unsure.',
+        content: [
+          'You are a concise Vietnamese AI research assistant.',
+          'Use the private knowledge context when it is relevant to the user question.',
+          'If the context is missing or not relevant, say that the private data does not contain enough information and then answer from general knowledge only if useful.',
+          'Do not invent facts from the private data.',
+          '',
+          'Private knowledge context:',
+          contextBlock,
+        ].join('\n'),
       },
       ...messages,
     ];

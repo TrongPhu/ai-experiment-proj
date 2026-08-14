@@ -53,6 +53,12 @@ Pull the default configured model:
 ollama pull gemma3:1b
 ```
 
+Pull the default embedding model used for private data/RAG:
+
+```bash
+ollama pull bge-m3
+```
+
 Check MySQL:
 
 ```bash
@@ -86,7 +92,9 @@ PORT=3001
 WEB_ORIGIN=http://localhost:3000
 OLLAMA_BASE_URL=http://localhost:11434
 OLLAMA_MODEL=gemma3:1b
+OLLAMA_EMBEDDING_MODEL=bge-m3
 OLLAMA_TIMEOUT_MS=300000
+KNOWLEDGE_CHUNK_SIZE=1200
 DB_HOST=localhost
 DB_PORT=3306
 DB_USER=root
@@ -219,6 +227,8 @@ This file creates the `ai-experiment-proj` database and two tables:
 
 - `chat_conversations`: stores one row per chat thread
 - `chat_messages`: stores user and assistant messages for each conversation
+- `knowledge_documents`: stores private documents you add to the app
+- `knowledge_chunks`: stores document chunks and embeddings for retrieval
 
 ### Option 1: Run The SQL File
 
@@ -338,7 +348,114 @@ When you delete a conversation:
 - BE sets `deleted_at`
 - `GET /conversations` hides deleted conversations
 
-## 8. Manage Data In MySQL
+## 8. Add Private Data With RAG
+
+This project uses a simple RAG flow for private data:
+
+1. Paste a private document into the `/knowledge` admin view
+2. Backend splits the document into chunks
+3. Backend calls Ollama embedding API with `OLLAMA_EMBEDDING_MODEL`
+4. Chunks and embeddings are stored in MySQL
+5. When you ask a question, backend embeds the question
+6. Backend finds the most similar chunks
+7. Backend injects those chunks into the chat prompt before calling the chat model
+
+Default embedding model:
+
+```env
+OLLAMA_EMBEDDING_MODEL=bge-m3
+```
+
+Pull it before adding private data:
+
+```bash
+ollama pull bge-m3
+```
+
+Why `bge-m3`: it is multilingual and supports long-document retrieval use cases, which makes it a better fit for Vietnamese/private documents than a small English-only embedding model.
+
+### Add Private Data From The UI
+
+1. Open http://localhost:3000/knowledge
+2. Use the `Knowledge admin` view
+3. Enter `Document title`
+4. Paste text/markdown/notes/policies/docs into the textarea
+5. Click `Add to knowledge`
+6. Ask questions in chat
+
+The chat sidebar links to this view through `Knowledge admin`. Keep this route as the future admin-only area when authentication/authorization is added.
+
+Current supported input is plain text/markdown pasted into the UI. PDF/DOCX upload is not implemented yet; convert those files to text first.
+
+### Add Private Data From API
+
+```bash
+curl -X POST http://localhost:3001/knowledge/documents ^
+  -H "Content-Type: application/json" ^
+  -d "{\"title\":\"Company policy\",\"content\":\"Paste private text here\"}"
+```
+
+macOS/Linux/Git Bash:
+
+```bash
+curl -X POST http://localhost:3001/knowledge/documents \
+  -H "Content-Type: application/json" \
+  -d '{"title":"Company policy","content":"Paste private text here"}'
+```
+
+List private documents:
+
+```bash
+curl http://localhost:3001/knowledge/documents
+```
+
+Search private data directly:
+
+```bash
+curl "http://localhost:3001/knowledge/search?q=your%20question"
+```
+
+Delete a private document:
+
+```bash
+curl -X DELETE http://localhost:3001/knowledge/documents/<document-id>
+```
+
+### Recommended Models For This Project
+
+For this codebase there are two model types:
+
+- Chat model: answers the user
+- Embedding model: converts private data and questions into vectors for search
+
+Recommended setup for a strong local machine:
+
+```env
+OLLAMA_MODEL=qwen3:30b
+OLLAMA_EMBEDDING_MODEL=bge-m3
+```
+
+Recommended setup for a normal laptop / quick testing:
+
+```env
+OLLAMA_MODEL=gemma3:1b
+OLLAMA_EMBEDDING_MODEL=bge-m3
+```
+
+Best quality option to try if your machine can run it:
+
+```bash
+ollama pull gpt-oss:20b
+```
+
+```env
+OLLAMA_MODEL=gpt-oss:20b
+OLLAMA_EMBEDDING_MODEL=bge-m3
+```
+
+`gpt-oss:20b` is a strong open-weight local chat model, but it needs more RAM/VRAM than `gemma3:1b`. If it is too slow, use `qwen3:30b` if already installed on your machine, or keep `gemma3:1b` for pipeline testing.
+
+## 9. Manage Data In MySQL
 
 Open MySQL:
 
@@ -356,6 +473,23 @@ Show tables:
 
 ```sql
 SHOW TABLES;
+```
+
+Show private documents:
+
+```sql
+SELECT id, title, source, chunk_count, created_at, updated_at
+FROM knowledge_documents
+ORDER BY updated_at DESC;
+```
+
+Show chunks for one private document:
+
+```sql
+SELECT chunk_index, content, embedding_model, created_at
+FROM knowledge_chunks
+WHERE document_id = 'document-id-here'
+ORDER BY chunk_index ASC;
 ```
 
 Show conversations:
@@ -398,7 +532,15 @@ Delete all chat history:
 DELETE FROM chat_conversations;
 ```
 
-## 9. Backend API
+Delete all private knowledge:
+
+```sql
+DELETE FROM knowledge_documents;
+```
+
+Because `knowledge_chunks` has a foreign key with `ON DELETE CASCADE`, deleting a document also deletes its chunks.
+
+## 10. Backend API
 
 Health:
 
@@ -422,6 +564,30 @@ Soft-delete one conversation:
 
 ```http
 DELETE /conversations/:id
+```
+
+List private documents:
+
+```http
+GET /knowledge/documents
+```
+
+Create a private document:
+
+```http
+POST /knowledge/documents
+```
+
+Delete a private document:
+
+```http
+DELETE /knowledge/documents/:id
+```
+
+Search private knowledge:
+
+```http
+GET /knowledge/search?q=your-question
 ```
 
 Send chat:
@@ -465,7 +631,7 @@ Body for continuing an existing chat:
 }
 ```
 
-## 10. Verify Before Commit
+## 11. Verify Before Commit
 
 ```bash
 npm run lint
@@ -473,7 +639,7 @@ npm run build
 npm run test
 ```
 
-## 11. Common Issues
+## 12. Common Issues
 
 ### Cannot GET /conversations
 
@@ -498,6 +664,21 @@ curl http://localhost:11434/api/tags
 ```
 
 The model in `apps/api/.env` must exist in `ollama list`.
+
+### Cannot Add Private Data
+
+Check the embedding model:
+
+```bash
+ollama list
+ollama pull bge-m3
+```
+
+Then verify:
+
+```env
+OLLAMA_EMBEDDING_MODEL=bge-m3
+```
 
 ### Backend Cannot Start Because Of MySQL
 

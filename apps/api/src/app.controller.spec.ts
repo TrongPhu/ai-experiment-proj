@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { ChatHistoryService } from './chat-history.service';
+import { KnowledgeService } from './knowledge.service';
 
 describe('AppController', () => {
   let appController: AppController;
@@ -13,6 +14,10 @@ describe('AppController', () => {
         AppService,
         {
           provide: ChatHistoryService,
+          useValue: {},
+        },
+        {
+          provide: KnowledgeService,
           useValue: {},
         },
       ],
