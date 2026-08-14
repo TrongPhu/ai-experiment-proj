@@ -135,15 +135,16 @@ const topics: Topic[] = [
   },
 ];
 
-const starterMessages: Message[] = [
-  {
-    role: "assistant",
-    content:
-      "Chào mừng tới AI Lab local. Chọn một câu hỏi mẫu hoặc nhập trực tiếp để gửi tới Ollama qua NestJS.",
-  },
-];
+const welcomeMessage =
+  "Chào mừng tới AI Lab local. Chọn một câu hỏi mẫu hoặc nhập trực tiếp để gửi tới Ollama qua NestJS.";
+
+const starterMessages: Message[] = [];
 
 const defaultGoogleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ?? "";
+
+function isWelcomeMessage(message: Message) {
+  return message.role === "assistant" && message.content.trim() === welcomeMessage;
+}
 
 function renderInlineMarkdown(text: string) {
   const parts = text.split(/(\*\*[^*]+\*\*)/g);
@@ -221,10 +222,15 @@ export function ChatWorkspace({
   const [error, setError] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const googleButtonRef = useRef<HTMLDivElement>(null);
+  const openConversationRequestRef = useRef(0);
 
   const activeQuestions = useMemo(
     () => topics.find((topic) => topic.title === activeTopic)?.questions ?? [],
     [activeTopic],
+  );
+  const visibleMessages = useMemo(
+    () => messages.filter((message) => !isWelcomeMessage(message)),
+    [messages],
   );
 
   const updateConversationUrl = useCallback((conversationId: string | null) => {
@@ -409,6 +415,11 @@ export function ChatWorkspace({
     id: string,
     options?: { replaceUrl?: boolean },
   ) {
+    const requestId = openConversationRequestRef.current + 1;
+    openConversationRequestRef.current = requestId;
+
+    setActiveConversationId(id);
+    setMessages([]);
     setHistoryLoading(true);
     setError("");
 
@@ -417,19 +428,31 @@ export function ChatWorkspace({
         `${apiUrl}/conversations/${id}`,
         withAuthHeaders(),
       );
+
+      if (openConversationRequestRef.current !== requestId) {
+        return;
+      }
+
       setActiveConversationId(data.id);
       setMessages(data.messages.length > 0 ? data.messages : starterMessages);
       if (options?.replaceUrl !== false) {
         updateConversationUrl(data.id);
       }
     } catch (requestError) {
+      if (openConversationRequestRef.current !== requestId) {
+        return;
+      }
+
+      setMessages(starterMessages);
       setError(
         requestError instanceof Error
           ? requestError.message
           : "Không mở được hội thoại.",
       );
     } finally {
-      setHistoryLoading(false);
+      if (openConversationRequestRef.current === requestId) {
+        setHistoryLoading(false);
+      }
     }
   }, [updateConversationUrl]);
 
@@ -495,14 +518,16 @@ export function ChatWorkspace({
     options?: { startNewConversation?: boolean },
   ) {
     const text = content.trim();
-    if (!text || isLoading) {
+    if (!text || isLoading || historyLoading) {
       return;
     }
 
     const conversationId = !session || options?.startNewConversation
       ? null
       : activeConversationId;
-    const baseMessages = options?.startNewConversation ? starterMessages : messages;
+    const baseMessages = options?.startNewConversation
+      ? starterMessages
+      : messages.filter((message) => !isWelcomeMessage(message));
     const nextMessages: Message[] = [
       ...baseMessages,
       { role: "user", content: text },
@@ -865,12 +890,6 @@ export function ChatWorkspace({
                               <span className="block truncate text-sm font-semibold">
                                 {conversation.title}
                               </span>
-                              <span
-                                className="block truncate text-xs text-[#647069]"
-                                title={conversation.model ?? "local model"}
-                              >
-                                {conversation.model ?? "local model"}
-                              </span>
                             </span>
                           </button>
                           <button
@@ -1077,6 +1096,9 @@ export function ChatWorkspace({
                 <h2 className="truncate text-xl font-semibold">
                   Chat với model Ollama
                 </h2>
+                <p className="mt-1 max-w-3xl truncate text-sm text-[#647069]">
+                  {welcomeMessage}
+                </p>
               </div>
               <div className="hidden rounded-md border border-[#dbe2d8] bg-[#fbfcfa] px-3 py-2 text-sm text-[#647069] sm:block">
                 API: {apiUrl}
@@ -1086,7 +1108,14 @@ export function ChatWorkspace({
 
           <div className="min-h-0 flex-1 overflow-y-auto px-4 py-6">
             <div className="mx-auto flex max-w-5xl flex-col gap-4">
-              {messages.map((message, index) => {
+              {historyLoading && (
+                <div className="flex items-center gap-3 text-sm text-[#647069]">
+                  <Loader2 className="animate-spin" size={18} aria-hidden="true" />
+                  Đang tải hội thoại...
+                </div>
+              )}
+
+              {visibleMessages.map((message, index) => {
                 const isUser = message.role === "user";
 
                 return (
@@ -1141,13 +1170,14 @@ export function ChatWorkspace({
                 value={input}
                 onChange={(event) => setInput(event.target.value)}
                 onKeyDown={handleKeyDown}
+                disabled={historyLoading}
                 rows={1}
                 placeholder="Nhập câu hỏi cho Ollama..."
-                className="min-h-12 flex-1 resize-none rounded-md border border-[#cfd8cc] bg-[#fbfcfa] px-4 py-3 text-sm leading-6 outline-none transition placeholder:text-[#89948d] focus:border-[#709772] focus:bg-white focus:ring-2 focus:ring-[#c7dcc3]"
+                className="min-h-12 flex-1 resize-none rounded-md border border-[#cfd8cc] bg-[#fbfcfa] px-4 py-3 text-sm leading-6 outline-none transition placeholder:text-[#89948d] focus:border-[#709772] focus:bg-white focus:ring-2 focus:ring-[#c7dcc3] disabled:cursor-not-allowed disabled:bg-[#edf1eb]"
               />
               <button
                 type="submit"
-                disabled={isLoading || !input.trim()}
+                disabled={isLoading || historyLoading || !input.trim()}
                 className="flex size-12 shrink-0 items-center justify-center rounded-md bg-[#254d3a] text-white transition hover:bg-[#1d3e2e] disabled:cursor-not-allowed disabled:bg-[#aab4ad]"
                 aria-label="Gửi tin nhắn"
                 title="Gửi tin nhắn"
