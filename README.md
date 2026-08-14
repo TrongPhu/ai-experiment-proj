@@ -7,7 +7,7 @@ A local AI chat application built with:
 - AI runtime: Ollama
 - Database: MySQL
 
-The app stores chat history in MySQL so previous conversations can be reopened later, similar to ChatGPT or Copilot.
+The app stores chat history per authenticated user in MySQL so each user can reopen only their own conversations, similar to ChatGPT or Copilot.
 
 ## 1. Get The Source Code
 
@@ -101,6 +101,19 @@ DB_USER=root
 DB_PASSWORD=
 DB_NAME=ai-experiment-proj
 DB_CONNECTION_LIMIT=10
+JWT_SECRET=change-this-local-secret
+JWT_EXPIRES_IN=7d
+BOOTSTRAP_ADMIN_EMAIL=admin@example.com
+BOOTSTRAP_ADMIN_PASSWORD=admin123456
+BOOTSTRAP_ADMIN_NAME=Admin
+GOOGLE_CLIENT_ID=
+```
+
+Frontend env is optional unless you want Google login. Create `apps/web/.env.local`:
+
+```env
+NEXT_PUBLIC_API_URL=http://localhost:3001
+NEXT_PUBLIC_GOOGLE_CLIENT_ID=
 ```
 
 If your MySQL user has a password, update:
@@ -223,9 +236,10 @@ The schema file is located at:
 apps/api/database/schema.sql
 ```
 
-This file creates the `ai-experiment-proj` database and two tables:
+This file creates the `ai-experiment-proj` database and these tables:
 
-- `chat_conversations`: stores one row per chat thread
+- `users`: stores authenticated users and their roles
+- `chat_conversations`: stores one row per chat thread and links it to `users.id`
 - `chat_messages`: stores user and assistant messages for each conversation
 - `knowledge_documents`: stores private documents you add to the app
 - `knowledge_chunks`: stores document chunks and embeddings for retrieval
@@ -299,17 +313,29 @@ Check the backend:
 curl http://localhost:3001/health
 ```
 
-Check the conversation list:
+### Deployment Checklist
+
+For a fresh machine or a new clone:
+
+1. Copy env examples:
 
 ```bash
-curl http://localhost:3001/conversations
+copy apps\api\.env.example apps\api\.env
+copy apps\web\.env.example apps\web\.env.local
 ```
 
-If there is no chat history yet, the result is:
+2. Update `apps/api/.env` with MySQL, Ollama, JWT, bootstrap admin, and optional `GOOGLE_CLIENT_ID`.
+3. Update `apps/web/.env.local` with `NEXT_PUBLIC_API_URL` and optional `NEXT_PUBLIC_GOOGLE_CLIENT_ID`.
+4. Create the MySQL database and tables with `apps/api/database/schema.sql`, or create only the database and let NestJS create missing tables on startup.
+5. Pull the Ollama chat model and embedding model from the env file.
+6. Run `npm run dev`.
+7. Open `http://localhost:3000`.
 
-```json
-[]
-```
+Do not commit `.env` or `.env.local`; only `.env.example` files belong in git.
+
+The chat page can be used as a guest. Guest chats are not saved to MySQL.
+
+To save and reopen chat history, log in from the sidebar. Use the bootstrap admin account first, then create more users from `/admin/users`.
 
 Open a conversation directly by slug:
 
@@ -325,30 +351,216 @@ http://localhost:3000/conversations/303b10ad-9d52-42b9-9727-d12fba9d80df
 
 ## 7. How Chat History Works
 
-When you send the first message in a new chat:
+When a guest sends a message:
 
-1. FE calls `POST /chat` without `conversationId`
-2. BE creates a new row in `chat_conversations`
-3. BE stores the user message in `chat_messages`
-4. BE calls Ollama
-5. BE stores the assistant response in `chat_messages`
-6. BE returns `conversationId` to FE
-7. FE shows the new conversation in the `History` sidebar
+1. FE calls `POST /chat` without a JWT token
+2. BE calls Ollama without private knowledge context
+3. BE returns the assistant response without creating a conversation row
+4. FE keeps the current chat only in browser memory
+
+When a logged-in user sends the first message in a new chat:
+
+1. FE sends the logged-in user's JWT token
+2. FE calls `POST /chat` without `conversationId`
+3. BE creates a new row in `chat_conversations` with `user_id`
+4. BE stores the user message in `chat_messages`
+5. BE calls Ollama with private knowledge context when relevant
+6. BE stores the assistant response in `chat_messages`
+7. BE returns `conversationId` to FE
+8. FE shows the new conversation in the `History` sidebar
 
 When you continue an existing conversation:
 
 1. FE sends `conversationId`
-2. BE stores the new message in the same conversation
+2. BE checks that the conversation belongs to the logged-in user
+3. BE stores the new message in the same conversation
 3. BE updates `updated_at`
 4. The sidebar sorts the latest updated conversation first
 
 When you delete a conversation:
 
 - BE does not physically delete it immediately
+- BE checks that the conversation belongs to the logged-in user
 - BE sets `deleted_at`
-- `GET /conversations` hides deleted conversations
+- `GET /conversations` hides deleted conversations and only returns the current user's history
 
-## 8. Add Private Data With RAG
+## 8. Authentication And Admin Roles
+
+The main chat page supports guest usage, but saved history and admin pages are protected.
+
+Public frontend page:
+
+```text
+http://localhost:3000
+```
+
+Protected frontend pages:
+
+```text
+http://localhost:3000/conversations/<conversation-id>
+http://localhost:3000/knowledge
+http://localhost:3000/admin/users
+```
+
+Public or optional-auth backend API:
+
+```http
+POST /chat
+```
+
+Protected backend APIs:
+
+```http
+GET /conversations
+GET /conversations/:id
+DELETE /conversations/:id
+GET /knowledge/documents
+POST /knowledge/documents
+DELETE /knowledge/documents/:id
+GET /knowledge/search?q=your-question
+GET /users
+POST /users
+```
+
+The backend uses JWT Bearer tokens. The frontend stores the token in browser `localStorage`.
+
+`POST /chat` works without a token for guest chat. If a valid token is sent, the backend saves the chat under that user and can use private knowledge context. Without a token, the backend does not save history and does not use private knowledge context.
+
+Users can create their own account from the chat sidebar. Self-registration always creates role `user`; only admins can create role `admin` from `/admin/users`.
+
+### Bootstrap Admin User
+
+On backend startup, the app creates the first admin user from env variables if that email does not exist yet:
+
+```env
+BOOTSTRAP_ADMIN_EMAIL=admin@example.com
+BOOTSTRAP_ADMIN_PASSWORD=admin123456
+BOOTSTRAP_ADMIN_NAME=Admin
+```
+
+Use this account to log in at:
+
+```text
+http://localhost:3000/knowledge
+http://localhost:3000/admin/users
+```
+
+After logging in as admin, you can:
+
+- Use `/` to chat and store chat history under your own user
+- Use `/knowledge` to add private company knowledge
+- Use `/knowledge` to delete private documents
+- Use `/admin/users` to create users
+- Use `/admin/users` to assign `user` or `admin` role when creating an account
+
+For real usage, change the bootstrap password and `JWT_SECRET` before sharing the app.
+
+### Auth API
+
+Login:
+
+```http
+POST /auth/login
+```
+
+Body:
+
+```json
+{
+  "email": "admin@example.com",
+  "password": "admin123456"
+}
+```
+
+Self-register as a normal user:
+
+```http
+POST /auth/register
+```
+
+Body:
+
+```json
+{
+  "name": "Company User",
+  "email": "user@example.com",
+  "password": "password123"
+}
+```
+
+This always creates role `user`.
+
+Google login:
+
+```http
+POST /auth/google
+```
+
+Body:
+
+```json
+{
+  "credential": "google-id-token-from-browser"
+}
+```
+
+To enable the Google button locally:
+
+1. Create an OAuth 2.0 Client ID in Google Cloud Console.
+2. Use application type `Web application`.
+3. Add `http://localhost:3000` to authorized JavaScript origins.
+4. Put the same client ID in both env files:
+
+```env
+# apps/api/.env
+GOOGLE_CLIENT_ID=your-google-client-id.apps.googleusercontent.com
+
+# apps/web/.env.local
+NEXT_PUBLIC_GOOGLE_CLIENT_ID=your-google-client-id.apps.googleusercontent.com
+```
+
+Restart `npm run dev` after changing env files.
+
+Response:
+
+```json
+{
+  "accessToken": "jwt-token",
+  "user": {
+    "id": "user-id",
+    "email": "admin@example.com",
+    "name": "Admin",
+    "role": "admin"
+  }
+}
+```
+
+Get current user:
+
+```http
+GET /auth/me
+Authorization: Bearer <token>
+```
+
+Create user, admin only:
+
+```http
+POST /users
+Authorization: Bearer <token>
+```
+
+Body:
+
+```json
+{
+  "name": "Company User",
+  "email": "user@example.com",
+  "password": "password123",
+  "role": "user"
+}
+```
+
+## 9. Add Private Data With RAG
 
 This project uses a simple RAG flow for private data:
 
@@ -377,11 +589,12 @@ Why `bge-m3`: it is multilingual and supports long-document retrieval use cases,
 ### Add Private Data From The UI
 
 1. Open http://localhost:3000/knowledge
-2. Use the `Knowledge admin` view
-3. Enter `Document title`
-4. Paste text/markdown/notes/policies/docs into the textarea
-5. Click `Add to knowledge`
-6. Ask questions in chat
+2. Log in with an admin account
+3. Use the `Knowledge admin` view
+4. Enter `Document title`
+5. Paste text/markdown/notes/policies/docs into the textarea
+6. Click `Add to knowledge`
+7. Ask questions in chat
 
 The chat sidebar links to this view through `Knowledge admin`. Keep this route as the future admin-only area when authentication/authorization is added.
 
@@ -455,7 +668,7 @@ OLLAMA_EMBEDDING_MODEL=bge-m3
 
 `gpt-oss:20b` is a strong open-weight local chat model, but it needs more RAM/VRAM than `gemma3:1b`. If it is too slow, use `qwen3:30b` if already installed on your machine, or keep `gemma3:1b` for pipeline testing.
 
-## 9. Manage Data In MySQL
+## 10. Manage Data In MySQL
 
 Open MySQL:
 
@@ -473,6 +686,14 @@ Show tables:
 
 ```sql
 SHOW TABLES;
+```
+
+Show users:
+
+```sql
+SELECT id, email, name, role, created_at, updated_at
+FROM users
+ORDER BY created_at DESC;
 ```
 
 Show private documents:
@@ -495,7 +716,7 @@ ORDER BY chunk_index ASC;
 Show conversations:
 
 ```sql
-SELECT id, title, model, created_at, updated_at, deleted_at
+SELECT id, user_id, title, model, created_at, updated_at, deleted_at
 FROM chat_conversations
 ORDER BY updated_at DESC;
 ```
@@ -532,6 +753,13 @@ Delete all chat history:
 DELETE FROM chat_conversations;
 ```
 
+Delete chat history for one user:
+
+```sql
+DELETE FROM chat_conversations
+WHERE user_id = 'user-id-here';
+```
+
 Delete all private knowledge:
 
 ```sql
@@ -540,7 +768,7 @@ DELETE FROM knowledge_documents;
 
 Because `knowledge_chunks` has a foreign key with `ON DELETE CASCADE`, deleting a document also deletes its chunks.
 
-## 10. Backend API
+## 11. Backend API
 
 Health:
 
@@ -548,22 +776,73 @@ Health:
 GET /health
 ```
 
+Login:
+
+```http
+POST /auth/login
+```
+
+Self-register, role `user` only:
+
+```http
+POST /auth/register
+```
+
+Google login:
+
+```http
+POST /auth/google
+```
+
+Chat as guest or logged-in user:
+
+```http
+POST /chat
+Authorization: Bearer <token> # optional
+```
+
+Without a token, the response is not saved. With a token, the response is saved to that user's history.
+
+Current user:
+
+```http
+GET /auth/me
+Authorization: Bearer <token>
+```
+
+List users, admin only:
+
+```http
+GET /users
+Authorization: Bearer <token>
+```
+
+Create users, admin only:
+
+```http
+POST /users
+Authorization: Bearer <token>
+```
+
 List conversations:
 
 ```http
 GET /conversations
+Authorization: Bearer <token>
 ```
 
 Open one conversation:
 
 ```http
 GET /conversations/:id
+Authorization: Bearer <token>
 ```
 
 Soft-delete one conversation:
 
 ```http
 DELETE /conversations/:id
+Authorization: Bearer <token>
 ```
 
 List private documents:
@@ -631,7 +910,7 @@ Body for continuing an existing chat:
 }
 ```
 
-## 11. Verify Before Commit
+## 12. Verify Before Commit
 
 ```bash
 npm run lint
@@ -639,7 +918,7 @@ npm run build
 npm run test
 ```
 
-## 12. Common Issues
+## 13. Common Issues
 
 ### Cannot GET /conversations
 
@@ -667,7 +946,7 @@ The model in `apps/api/.env` must exist in `ollama list`.
 
 ### Cannot Add Private Data
 
-Check the embedding model:
+First check that you are logged in as an admin. Then check the embedding model:
 
 ```bash
 ollama list

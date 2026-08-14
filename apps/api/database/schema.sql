@@ -4,16 +4,35 @@ CREATE DATABASE IF NOT EXISTS `ai-experiment-proj`
 
 USE `ai-experiment-proj`;
 
+CREATE TABLE IF NOT EXISTS users (
+  id CHAR(36) NOT NULL,
+  email VARCHAR(180) NOT NULL,
+  name VARCHAR(120) NOT NULL,
+  password_hash VARCHAR(255) NOT NULL,
+  role ENUM('user', 'admin') NOT NULL DEFAULT 'user',
+  created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_users_email (email),
+  INDEX idx_users_role (role)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS chat_conversations (
   id CHAR(36) NOT NULL,
+  user_id CHAR(36) NULL,
   title VARCHAR(180) NOT NULL,
   model VARCHAR(120) NULL,
   created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
   deleted_at TIMESTAMP(3) NULL,
   PRIMARY KEY (id),
+  INDEX idx_chat_conversations_user_updated_at (user_id, updated_at),
   INDEX idx_chat_conversations_updated_at (updated_at),
-  INDEX idx_chat_conversations_deleted_at (deleted_at)
+  INDEX idx_chat_conversations_deleted_at (deleted_at),
+  CONSTRAINT fk_chat_conversations_user
+    FOREIGN KEY (user_id)
+    REFERENCES users (id)
+    ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS chat_messages (

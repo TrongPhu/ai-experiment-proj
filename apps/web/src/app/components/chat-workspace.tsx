@@ -11,6 +11,7 @@ import {
   useState,
 } from "react";
 import {
+  ArrowLeft,
   Bot,
   BrainCircuit,
   ChevronRight,
@@ -18,6 +19,8 @@ import {
   Cpu,
   Database,
   Loader2,
+  LogIn,
+  LogOut,
   MessageSquare,
   Microscope,
   Plus,
@@ -25,9 +28,18 @@ import {
   Sparkles,
   Trash2,
   User,
+  UserPlus,
 } from "lucide-react";
 import Link from "next/link";
-import { apiUrl, requestJson } from "../lib/api";
+import {
+  apiUrl,
+  AuthSession,
+  AuthUser,
+  clearAuthToken,
+  requestJson,
+  setAuthToken,
+  withAuthHeaders,
+} from "../lib/api";
 
 type Role = "system" | "user" | "assistant";
 
@@ -44,6 +56,34 @@ type Conversation = {
   createdAt: string;
   updatedAt: string;
 };
+
+type GoogleCredentialResponse = {
+  credential?: string;
+};
+
+declare global {
+  interface Window {
+    google?: {
+      accounts: {
+        id: {
+          initialize: (options: {
+            client_id: string;
+            callback: (response: GoogleCredentialResponse) => void;
+          }) => void;
+          renderButton: (
+            element: HTMLElement,
+            options: {
+              theme?: "outline" | "filled_blue" | "filled_black";
+              size?: "large" | "medium" | "small";
+              width?: number;
+              text?: "signin_with" | "signup_with" | "continue_with";
+            },
+          ) => void;
+        };
+      };
+    };
+  }
+}
 
 type Topic = {
   title: string;
@@ -103,6 +143,8 @@ const starterMessages: Message[] = [
   },
 ];
 
+const defaultGoogleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ?? "";
+
 export function ChatWorkspace({
   initialConversationId = null,
 }: {
@@ -110,6 +152,17 @@ export function ChatWorkspace({
 }) {
   const [messages, setMessages] = useState<Message[]>(starterMessages);
   const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [session, setSession] = useState<AuthUser | null>(null);
+  const [authChecked, setAuthChecked] = useState(false);
+  const [showLogin, setShowLogin] = useState(false);
+  const [authMode, setAuthMode] = useState<"login" | "register">("login");
+  const [loginEmail, setLoginEmail] = useState("admin@example.com");
+  const [loginPassword, setLoginPassword] = useState("admin123456");
+  const [registerName, setRegisterName] = useState("");
+  const [registerEmail, setRegisterEmail] = useState("");
+  const [registerPassword, setRegisterPassword] = useState("");
+  const [googleClientId, setGoogleClientId] = useState(defaultGoogleClientId);
+  const [googleReady, setGoogleReady] = useState(false);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(
     null,
   );
@@ -119,6 +172,7 @@ export function ChatWorkspace({
   const [historyLoading, setHistoryLoading] = useState(false);
   const [error, setError] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const googleButtonRef = useRef<HTMLDivElement>(null);
 
   const activeQuestions = useMemo(
     () => topics.find((topic) => topic.title === activeTopic)?.questions ?? [],
@@ -132,8 +186,16 @@ export function ChatWorkspace({
   }, []);
 
   const loadConversations = useCallback(async () => {
+    if (!session) {
+      setConversations([]);
+      return;
+    }
+
     try {
-      const data = await requestJson<Conversation[]>(`${apiUrl}/conversations`);
+      const data = await requestJson<Conversation[]>(
+        `${apiUrl}/conversations`,
+        withAuthHeaders(),
+      );
       setConversations(data);
     } catch (requestError) {
       setError(
@@ -142,15 +204,157 @@ export function ChatWorkspace({
           : "Không tải được lịch sử hội thoại.",
       );
     }
+  }, [session]);
+
+  const applyAuthSession = useCallback(
+    async (data: AuthSession) => {
+      setAuthToken(data.accessToken);
+      setSession(data.user);
+      setShowLogin(false);
+      setMessages(starterMessages);
+      setActiveConversationId(null);
+      updateConversationUrl(null);
+
+      const nextConversations = await requestJson<Conversation[]>(
+        `${apiUrl}/conversations`,
+        withAuthHeaders(),
+      );
+      setConversations(nextConversations);
+    },
+    [updateConversationUrl],
+  );
+
+  const handleGoogleCredential = useCallback(
+    async (credential?: string) => {
+      if (!credential) {
+        setError("Google login did not return a credential.");
+        return;
+      }
+
+      setIsLoading(true);
+      setError("");
+
+      try {
+        const data = await requestJson<AuthSession>(`${apiUrl}/auth/google`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ credential }),
+        });
+
+        await applyAuthSession(data);
+      } catch (requestError) {
+        setError(
+          requestError instanceof Error
+            ? requestError.message
+            : "Google login failed.",
+        );
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [applyAuthSession],
+  );
+
+  useEffect(() => {
+    const timer = window.setTimeout(async () => {
+      try {
+        const user = await requestJson<AuthUser>(
+          `${apiUrl}/auth/me`,
+          withAuthHeaders(),
+        );
+        setSession(user);
+      } catch {
+        clearAuthToken();
+      } finally {
+        setAuthChecked(true);
+      }
+    }, 0);
+
+    return () => window.clearTimeout(timer);
   }, []);
 
   useEffect(() => {
+    if (googleClientId) {
+      return;
+    }
+
+    const timer = window.setTimeout(async () => {
+      try {
+        const config = await requestJson<{ clientId: string | null }>(
+          `${apiUrl}/auth/google/config`,
+        );
+
+        if (config.clientId) {
+          setGoogleClientId(config.clientId);
+        }
+      } catch {
+        // The regular email/password flow still works without Google config.
+      }
+    }, 0);
+
+    return () => window.clearTimeout(timer);
+  }, [googleClientId]);
+
+  useEffect(() => {
+    if (!session) {
+      return;
+    }
+
     const timer = window.setTimeout(() => {
       void loadConversations();
     }, 0);
 
     return () => window.clearTimeout(timer);
-  }, [loadConversations]);
+  }, [loadConversations, session]);
+
+  useEffect(() => {
+    if (!showLogin || !googleClientId || session) {
+      return;
+    }
+
+    const existingScript = document.querySelector<HTMLScriptElement>(
+      'script[src="https://accounts.google.com/gsi/client"]',
+    );
+
+    const initializeGoogle = () => {
+      if (!window.google || !googleButtonRef.current) {
+        return;
+      }
+
+      googleButtonRef.current.innerHTML = "";
+      window.google.accounts.id.initialize({
+        client_id: googleClientId,
+        callback: (response) => {
+          void handleGoogleCredential(response.credential);
+        },
+      });
+      window.google.accounts.id.renderButton(googleButtonRef.current, {
+        theme: "outline",
+        size: "large",
+        width: 286,
+        text: authMode === "register" ? "signup_with" : "signin_with",
+      });
+      setGoogleReady(true);
+    };
+
+    if (existingScript) {
+      if (window.google) {
+        initializeGoogle();
+      } else {
+        existingScript.addEventListener("load", initializeGoogle, {
+          once: true,
+        });
+      }
+      return;
+    }
+
+    const script = document.createElement("script");
+    script.src = "https://accounts.google.com/gsi/client";
+    script.async = true;
+    script.defer = true;
+    script.addEventListener("load", initializeGoogle, { once: true });
+    document.head.appendChild(script);
+  }, [authMode, googleClientId, handleGoogleCredential, session, showLogin]);
 
   const openConversation = useCallback(async function openConversation(
     id: string,
@@ -162,6 +366,7 @@ export function ChatWorkspace({
     try {
       const data = await requestJson<Conversation & { messages: Message[] }>(
         `${apiUrl}/conversations/${id}`,
+        withAuthHeaders(),
       );
       setActiveConversationId(data.id);
       setMessages(data.messages.length > 0 ? data.messages : starterMessages);
@@ -180,14 +385,33 @@ export function ChatWorkspace({
   }, [updateConversationUrl]);
 
   useEffect(() => {
-    if (initialConversationId && initialConversationId !== activeConversationId) {
+    if (
+      authChecked &&
+      initialConversationId &&
+      initialConversationId !== activeConversationId
+    ) {
+      if (!session) {
+        const timer = window.setTimeout(() => {
+          setError("Dang nhap de mo lai hoi thoai da luu.");
+          setShowLogin(true);
+        }, 0);
+
+        return () => window.clearTimeout(timer);
+      }
+
       const timer = window.setTimeout(() => {
         void openConversation(initialConversationId, { replaceUrl: false });
       }, 0);
 
       return () => window.clearTimeout(timer);
     }
-  }, [activeConversationId, initialConversationId, openConversation]);
+  }, [
+    activeConversationId,
+    authChecked,
+    initialConversationId,
+    openConversation,
+    session,
+  ]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ block: "end" });
@@ -202,7 +426,7 @@ export function ChatWorkspace({
 
     try {
       await requestJson<{ ok: boolean }>(`${apiUrl}/conversations/${id}`, {
-        method: "DELETE",
+        ...withAuthHeaders({ method: "DELETE" }),
       });
       if (activeConversationId === id) {
         startNewChat();
@@ -226,7 +450,7 @@ export function ChatWorkspace({
       return;
     }
 
-    const conversationId = options?.startNewConversation
+    const conversationId = !session || options?.startNewConversation
       ? null
       : activeConversationId;
     const baseMessages = options?.startNewConversation ? starterMessages : messages;
@@ -245,21 +469,28 @@ export function ChatWorkspace({
 
     try {
       const data = await requestJson<{
-        conversationId: string;
+        conversationId: string | null;
         message: Message;
-      }>(`${apiUrl}/chat`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          conversationId,
-          messages: nextMessages,
+      }>(
+        `${apiUrl}/chat`,
+        withAuthHeaders({
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            conversationId,
+            messages: nextMessages,
+          }),
         }),
-      });
+      );
 
-      setActiveConversationId(data.conversationId);
-      updateConversationUrl(data.conversationId);
+      if (data.conversationId) {
+        setActiveConversationId(data.conversationId);
+        updateConversationUrl(data.conversationId);
+      }
       setMessages((current) => [...current, data.message]);
-      await loadConversations();
+      if (session) {
+        await loadConversations();
+      }
     } catch (requestError) {
       setError(
         requestError instanceof Error
@@ -275,6 +506,84 @@ export function ChatWorkspace({
     setActiveConversationId(null);
     setMessages(starterMessages);
     setInput("");
+    setError("");
+    updateConversationUrl(null);
+  }
+
+  async function handleLogin(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setIsLoading(true);
+    setError("");
+
+    try {
+      const data = await requestJson<AuthSession>(`${apiUrl}/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: loginEmail,
+          password: loginPassword,
+        }),
+      });
+
+      await applyAuthSession(data);
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Khong dang nhap duoc.",
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  async function handleRegister(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (
+      !registerName.trim() ||
+      !registerEmail.trim() ||
+      registerPassword.length < 8
+    ) {
+      setError("Name, valid email, and password with at least 8 chars are required.");
+      return;
+    }
+
+    setIsLoading(true);
+    setError("");
+
+    try {
+      const data = await requestJson<AuthSession>(`${apiUrl}/auth/register`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: registerName.trim(),
+          email: registerEmail.trim(),
+          password: registerPassword,
+        }),
+      });
+
+      setRegisterName("");
+      setRegisterEmail("");
+      setRegisterPassword("");
+      await applyAuthSession(data);
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Could not create account.",
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  function logout() {
+    clearAuthToken();
+    setSession(null);
+    setConversations([]);
+    setActiveConversationId(null);
+    setMessages(starterMessages);
     setError("");
     updateConversationUrl(null);
   }
@@ -296,6 +605,14 @@ export function ChatWorkspace({
     }
   }
 
+  if (!authChecked) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-[#f5f7f4] px-6 text-[#1f2723]">
+        <Loader2 className="animate-spin text-[#254d3a]" size={24} />
+      </main>
+    );
+  }
+
   return (
     <main className="h-dvh overflow-hidden bg-[#f5f7f4] text-[#1f2723]">
       <div className="flex h-full min-h-0 flex-col lg:flex-row">
@@ -309,7 +626,7 @@ export function ChatWorkspace({
                 <div className="min-w-0 flex-1">
                   <h1 className="truncate text-lg font-semibold">AI Research Lab</h1>
                   <p className="truncate text-sm text-[#647069]">
-                    NextJS + NestJS + Ollama
+                    {session?.email ?? "Guest chat"}
                   </p>
                 </div>
               </div>
@@ -321,9 +638,163 @@ export function ChatWorkspace({
                 <Plus size={17} aria-hidden="true" />
                 Chat mới
               </button>
+              {session ? (
+                <button
+                  type="button"
+                  onClick={logout}
+                  className="mt-2 flex h-10 w-full items-center justify-center gap-2 rounded-md border border-[#dbe2d8] bg-white text-sm font-semibold text-[#254d3a] transition hover:bg-[#f7faf5]"
+                >
+                  <LogOut size={16} aria-hidden="true" />
+                  Logout
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setShowLogin((current) => !current)}
+                  className="mt-2 flex h-10 w-full items-center justify-center gap-2 rounded-md border border-[#dbe2d8] bg-white text-sm font-semibold text-[#254d3a] transition hover:bg-[#f7faf5]"
+                >
+                  <LogIn size={16} aria-hidden="true" />
+                  Login to save history
+                </button>
+              )}
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+              {!session && showLogin && (
+                <form
+                  onSubmit={authMode === "login" ? handleLogin : handleRegister}
+                  className="mb-4 space-y-3 rounded-md border border-[#dbe2d8] bg-white p-3"
+                >
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAuthMode("login");
+                        setError("");
+                      }}
+                      className={`h-9 rounded-md text-sm font-semibold transition ${
+                        authMode === "login"
+                          ? "bg-[#254d3a] text-white"
+                          : "border border-[#dbe2d8] bg-[#fbfcfa] text-[#254d3a]"
+                      }`}
+                    >
+                      Login
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAuthMode("register");
+                        setError("");
+                      }}
+                      className={`flex h-9 items-center justify-center gap-2 rounded-md text-sm font-semibold transition ${
+                        authMode === "register"
+                          ? "bg-[#254d3a] text-white"
+                          : "border border-[#dbe2d8] bg-[#fbfcfa] text-[#254d3a]"
+                      }`}
+                    >
+                      <UserPlus size={15} aria-hidden="true" />
+                      Register
+                    </button>
+                  </div>
+
+                  {authMode === "register" && (
+                    <input
+                      value={registerName}
+                      onChange={(event) => setRegisterName(event.target.value)}
+                      placeholder="Full name"
+                      className="h-10 w-full rounded-md border border-[#cfd8cc] px-3 text-sm outline-none focus:border-[#709772] focus:ring-2 focus:ring-[#c7dcc3]"
+                    />
+                  )}
+
+                  {authMode === "login" ? (
+                    <>
+                      <input
+                        value={loginEmail}
+                        onChange={(event) => setLoginEmail(event.target.value)}
+                        placeholder="Email"
+                        className="h-10 w-full rounded-md border border-[#cfd8cc] px-3 text-sm outline-none focus:border-[#709772] focus:ring-2 focus:ring-[#c7dcc3]"
+                      />
+                      <input
+                        value={loginPassword}
+                        onChange={(event) => setLoginPassword(event.target.value)}
+                        placeholder="Password"
+                        type="password"
+                        className="h-10 w-full rounded-md border border-[#cfd8cc] px-3 text-sm outline-none focus:border-[#709772] focus:ring-2 focus:ring-[#c7dcc3]"
+                      />
+                    </>
+                  ) : (
+                    <>
+                      <input
+                        value={registerEmail}
+                        onChange={(event) => setRegisterEmail(event.target.value)}
+                        placeholder="Email"
+                        className="h-10 w-full rounded-md border border-[#cfd8cc] px-3 text-sm outline-none focus:border-[#709772] focus:ring-2 focus:ring-[#c7dcc3]"
+                      />
+                      <input
+                        value={registerPassword}
+                        onChange={(event) =>
+                          setRegisterPassword(event.target.value)
+                        }
+                        placeholder="Password at least 8 chars"
+                        type="password"
+                        className="h-10 w-full rounded-md border border-[#cfd8cc] px-3 text-sm outline-none focus:border-[#709772] focus:ring-2 focus:ring-[#c7dcc3]"
+                      />
+                    </>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={isLoading}
+                    className="flex h-10 w-full items-center justify-center gap-2 rounded-md bg-[#254d3a] text-sm font-semibold text-white transition hover:bg-[#1d3e2e] disabled:cursor-not-allowed disabled:bg-[#aab4ad]"
+                  >
+                    {isLoading && (
+                      <Loader2
+                        className="animate-spin"
+                        size={16}
+                        aria-hidden="true"
+                      />
+                    )}
+                    {authMode === "login" ? "Login" : "Create account"}
+                  </button>
+
+                  {error && (
+                    <p className="rounded-md border border-[#e2b6a8] bg-[#fff2ee] px-3 py-2 text-xs text-[#8a3a24]">
+                      {error}
+                    </p>
+                  )}
+
+                  <div className="flex items-center gap-2 text-xs text-[#647069]">
+                    <span className="h-px flex-1 bg-[#dbe2d8]" />
+                    Google
+                    <span className="h-px flex-1 bg-[#dbe2d8]" />
+                  </div>
+
+                  {googleClientId ? (
+                    <div
+                      ref={googleButtonRef}
+                      className={`min-h-10 ${googleReady ? "" : "opacity-70"}`}
+                    />
+                  ) : (
+                    <p className="rounded-md border border-dashed border-[#dbe2d8] px-3 py-2 text-xs text-[#647069]">
+                      Set NEXT_PUBLIC_GOOGLE_CLIENT_ID and GOOGLE_CLIENT_ID to
+                      enable Google login.
+                    </p>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowLogin(false);
+                      setError("");
+                    }}
+                    className="flex h-10 w-full items-center justify-center gap-2 rounded-md border border-[#dbe2d8] bg-[#fbfcfa] text-sm font-semibold text-[#254d3a] transition hover:bg-white"
+                  >
+                    <ArrowLeft size={16} aria-hidden="true" />
+                    Back to chat
+                  </button>
+                </form>
+              )}
+
               <div>
                 <div className="mb-3 flex items-center justify-between">
                   <p className="text-xs font-semibold uppercase text-[#7d6a3f]">
@@ -338,7 +809,11 @@ export function ChatWorkspace({
                   )}
                 </div>
                 <div className="space-y-2">
-                  {conversations.length === 0 ? (
+                  {!session ? (
+                    <p className="rounded-md border border-dashed border-[#dbe2d8] px-3 py-3 text-sm text-[#647069]">
+                      Dang nhap de luu va mo lai lich su chat.
+                    </p>
+                  ) : conversations.length === 0 ? (
                     <p className="rounded-md border border-dashed border-[#dbe2d8] px-3 py-3 text-sm text-[#647069]">
                       Chưa có hội thoại đã lưu.
                     </p>

@@ -14,6 +14,7 @@ export interface ChatConversationSummary {
 
 interface ConversationRow extends RowDataPacket {
   id: string;
+  user_id: string | null;
   title: string;
   model: string | null;
   created_at: Date;
@@ -33,43 +34,48 @@ interface MessageRow extends RowDataPacket {
 export class ChatHistoryService {
   constructor(private readonly database: DatabaseService) {}
 
-  async listConversations(): Promise<ChatConversationSummary[]> {
+  async listConversations(userId: string): Promise<ChatConversationSummary[]> {
     const rows = await this.database.query<ConversationRow[]>(
       `
-        SELECT id, title, model, created_at, updated_at
+        SELECT id, user_id, title, model, created_at, updated_at
         FROM chat_conversations
-        WHERE deleted_at IS NULL
+        WHERE user_id = ? AND deleted_at IS NULL
         ORDER BY updated_at DESC
         LIMIT 100
       `,
+      [userId],
     );
 
     return rows.map((row) => this.mapConversation(row));
   }
 
-  async createConversation(title: string, model: string | null) {
+  async createConversation(
+    userId: string,
+    title: string,
+    model: string | null,
+  ) {
     const id = randomUUID();
 
     await this.database.execute(
       `
-        INSERT INTO chat_conversations (id, title, model)
-        VALUES (?, ?, ?)
+        INSERT INTO chat_conversations (id, user_id, title, model)
+        VALUES (?, ?, ?, ?)
       `,
-      [id, this.normalizeTitle(title), model],
+      [id, userId, this.normalizeTitle(title), model],
     );
 
-    return this.getConversation(id);
+    return this.getConversation(userId, id);
   }
 
-  async getConversation(id: string) {
+  async getConversation(userId: string, id: string) {
     const rows = await this.database.query<ConversationRow[]>(
       `
-        SELECT id, title, model, created_at, updated_at
+        SELECT id, user_id, title, model, created_at, updated_at
         FROM chat_conversations
-        WHERE id = ? AND deleted_at IS NULL
+        WHERE id = ? AND user_id = ? AND deleted_at IS NULL
         LIMIT 1
       `,
-      [id],
+      [id, userId],
     );
 
     const conversation = rows[0];
@@ -100,14 +106,14 @@ export class ChatHistoryService {
     };
   }
 
-  async softDeleteConversation(id: string) {
+  async softDeleteConversation(userId: string, id: string) {
     const result = await this.database.execute(
       `
         UPDATE chat_conversations
         SET deleted_at = CURRENT_TIMESTAMP(3)
-        WHERE id = ? AND deleted_at IS NULL
+        WHERE id = ? AND user_id = ? AND deleted_at IS NULL
       `,
-      [id],
+      [id, userId],
     );
 
     if (result.affectedRows === 0) {

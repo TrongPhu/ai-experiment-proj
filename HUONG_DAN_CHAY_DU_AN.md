@@ -109,6 +109,25 @@ DB_USER=root
 DB_PASSWORD=
 DB_NAME=ai-experiment-proj
 DB_CONNECTION_LIMIT=10
+JWT_SECRET=change-this-local-secret
+JWT_EXPIRES_IN=7d
+BOOTSTRAP_ADMIN_EMAIL=admin@example.com
+BOOTSTRAP_ADMIN_PASSWORD=admin123456
+BOOTSTRAP_ADMIN_NAME=Admin
+GOOGLE_CLIENT_ID=
+```
+
+Neu muon bat dang nhap Google, tao file:
+
+```text
+apps/web/.env.local
+```
+
+Noi dung:
+
+```env
+NEXT_PUBLIC_API_URL=http://localhost:3001
+NEXT_PUBLIC_GOOGLE_CLIENT_ID=
 ```
 
 Neu MySQL cua may co mat khau thi sua dong nay:
@@ -148,7 +167,8 @@ ai-experiment-proj
 
 Va tao cac bang can thiet:
 
-- `chat_conversations`: luu danh sach hoi thoai
+- `users`: luu user va quyen `user`/`admin`
+- `chat_conversations`: luu danh sach hoi thoai, moi hoi thoai gan voi mot `users.id`
 - `chat_messages`: luu tung tin nhan trong hoi thoai
 - `knowledge_documents`: luu tai lieu rieng
 - `knowledge_chunks`: luu cac doan tai lieu va embedding de tim kiem
@@ -195,6 +215,28 @@ Neu thanh cong se thay ket qua gan giong:
 }
 ```
 
+### Checklist Trien Khai Tren May Moi
+
+Khi clone repo ve may moi:
+
+1. Cai NodeJS, MySQL, Ollama
+2. Chay `npm install`
+3. Tao file env tu file mau:
+
+```bash
+copy apps\api\.env.example apps\api\.env
+copy apps\web\.env.example apps\web\.env.local
+```
+
+4. Sua `apps/api/.env` cho dung MySQL, Ollama, JWT, admin mac dinh, va `GOOGLE_CLIENT_ID` neu dung Google login
+5. Sua `apps/web/.env.local` voi `NEXT_PUBLIC_API_URL` va `NEXT_PUBLIC_GOOGLE_CLIENT_ID` neu dung Google login
+6. Tao database `ai-experiment-proj` va chay SQL trong `apps/api/database/schema.sql`
+7. Pull model Ollama theo `.env`
+8. Chay `npm run dev`
+9. Mo `http://localhost:3000`
+
+Khong commit `.env` hoac `.env.local` len git. Chi commit cac file `.env.example`.
+
 ## 8. Cach Chat
 
 Mo:
@@ -205,10 +247,28 @@ http://localhost:3000
 
 Sau do:
 
-1. Bam `Chat moi` de tao hoi thoai moi
-2. Nhap cau hoi vao o chat
-3. Bam nut gui
-4. Lich su chat se hien ben trai
+1. Neu chua dang nhap, van co the hoi dap ngay nhu guest
+2. Bam `Chat moi` de tao hoi thoai moi
+3. Nhap cau hoi vao o chat
+4. Bam nut gui
+5. Neu muon luu lich su, bam `Login to save history` o sidebar va dang nhap
+6. Sau khi dang nhap, lich su chat se hien ben trai
+
+Tai form `Login to save history`, user co the:
+
+- Dang nhap bang email/password
+- Bam tab `Register` de tu tao tai khoan nhanh voi ten, email, mat khau
+- Tai khoan tu tao luon co quyen `user`, khong the tu tao `admin`
+- Dang nhap bang Google neu da cau hinh Google Client ID
+
+Lich su chat duoc gan theo user dang nhap:
+
+- Guest chat khong luu vao MySQL va khong hien trong lich su
+- User A chi thay lich su cua User A
+- User B chi thay lich su cua User B
+- Admin cung co lich su chat rieng cua admin
+- Khi mo URL `/conversations/<conversation-id>`, backend van kiem tra conversation do co thuoc user dang nhap hay khong
+- Guest chat khong duoc dua private knowledge vao prompt de tranh lo du lieu rieng
 
 Co the mo lai mot hoi thoai bang URL:
 
@@ -222,7 +282,95 @@ Vi du:
 http://localhost:3000/conversations/303b10ad-9d52-42b9-9727-d12fba9d80df
 ```
 
-## 9. Cach Dua Du Lieu Rieng Vao App
+## 9. Dang Nhap Admin Va Phan Quyen User
+
+Trang nhap du lieu rieng la trang admin:
+
+```text
+http://localhost:3000/knowledge
+```
+
+Trang quan ly user va gan quyen nam rieng o:
+
+```text
+http://localhost:3000/admin/users
+```
+
+Hai trang nay deu yeu cau dang nhap bang user co quyen `admin`.
+
+Mac dinh backend se tu tao admin dau tien khi start neu email nay chua ton tai:
+
+```env
+BOOTSTRAP_ADMIN_EMAIL=admin@example.com
+BOOTSTRAP_ADMIN_PASSWORD=admin123456
+BOOTSTRAP_ADMIN_NAME=Admin
+```
+
+Tai man hinh login `/knowledge` hoac `/admin/users`, dang nhap bang:
+
+```text
+Email: admin@example.com
+Password: admin123456
+```
+
+Sau khi dang nhap admin, co the:
+
+- Vao `/knowledge` de nhap du lieu rieng cua cong ty
+- Vao `/knowledge` de xoa tai lieu rieng
+- Vao `/admin/users` de tao user moi
+- Vao `/admin/users` de gan quyen `user` hoac `admin` khi tao tai khoan
+
+### Cau Hinh Google Login
+
+De bat nut dang nhap Google:
+
+1. Vao Google Cloud Console
+2. Tao OAuth 2.0 Client ID
+3. Chon application type la `Web application`
+4. Them authorized JavaScript origin:
+
+```text
+http://localhost:3000
+```
+
+5. Copy client ID vao `apps/api/.env`:
+
+```env
+GOOGLE_CLIENT_ID=your-google-client-id.apps.googleusercontent.com
+```
+
+6. Copy client ID vao `apps/web/.env.local`:
+
+```env
+NEXT_PUBLIC_GOOGLE_CLIENT_ID=your-google-client-id.apps.googleusercontent.com
+```
+
+7. Restart app:
+
+```bash
+npm run dev
+```
+
+Quyen hien tai:
+
+- `guest`: hoi dap duoc, khong luu lich su, khong dung private knowledge
+- `user`: dang nhap chat duoc, co lich su chat rieng, nhung khong duoc vao Knowledge Admin
+- `admin`: duoc vao Knowledge Admin, nhap data, xoa data, tao user
+
+Khi dung that, nen doi:
+
+```env
+JWT_SECRET=chuoi_bi_mat_manh_hon
+BOOTSTRAP_ADMIN_PASSWORD=mat_khau_manh_hon
+```
+
+Sau khi doi `.env`, restart app:
+
+```bash
+npm run dev
+```
+
+## 10. Cach Dua Du Lieu Rieng Vao App
 
 Mo trang quan tri du lieu rieng:
 
@@ -232,11 +380,12 @@ http://localhost:3000/knowledge
 
 Sau do:
 
-1. Nhap ten tai lieu vao `Document title`
-2. Paste noi dung rieng cua cong ty vao o `Private content`
-3. Bam `Add to knowledge`
-4. Quay lai trang chat
-5. Hoi cau hoi lien quan toi du lieu vua nhap
+1. Dang nhap bang admin
+2. Nhap ten tai lieu vao `Document title`
+3. Paste noi dung rieng cua cong ty vao o `Private content`
+4. Bam `Add to knowledge`
+5. Quay lai trang chat
+6. Hoi cau hoi lien quan toi du lieu vua nhap
 
 Hien tai app ho tro nhap:
 
@@ -249,7 +398,7 @@ Hien tai app ho tro nhap:
 
 Chua ho tro upload PDF/DOCX truc tiep. Neu co PDF/DOCX, hay copy text trong file roi paste vao trang `/knowledge`.
 
-## 10. Du Lieu Rieng Hoat Dong Nhu The Nao?
+## 11. Du Lieu Rieng Hoat Dong Nhu The Nao?
 
 Khi them du lieu rieng:
 
@@ -270,7 +419,37 @@ Khi chat:
 
 Day la cach tiep can RAG: Retrieval-Augmented Generation.
 
-## 11. Loi Thuong Gap
+## 12. Loi Thuong Gap
+
+### Khong Vao Duoc Trang Knowledge Admin
+
+Kiem tra da dang nhap bang admin chua.
+
+Neu chua co admin, kiem tra file:
+
+```text
+apps/api/.env
+```
+
+Can co:
+
+```env
+BOOTSTRAP_ADMIN_EMAIL=admin@example.com
+BOOTSTRAP_ADMIN_PASSWORD=admin123456
+BOOTSTRAP_ADMIN_NAME=Admin
+```
+
+Sau do restart app:
+
+```bash
+npm run dev
+```
+
+Dang nhap lai tai:
+
+```text
+http://localhost:3000/knowledge
+```
 
 ### Loi Model Khong Ton Tai
 
@@ -361,7 +540,7 @@ Tat process:
 Get-NetTCPConnection -LocalPort 3000,3001 -State Listen | Select-Object -ExpandProperty OwningProcess -Unique | ForEach-Object { Stop-Process -Id $_ -Force }
 ```
 
-## 12. Kiem Tra App Truoc Khi Commit
+## 13. Kiem Tra App Truoc Khi Commit
 
 Neu la developer, chay:
 

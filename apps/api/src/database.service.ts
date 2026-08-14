@@ -42,18 +42,41 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
 
   private async ensureSchema() {
     await this.execute(`
+      CREATE TABLE IF NOT EXISTS users (
+        id CHAR(36) NOT NULL,
+        email VARCHAR(180) NOT NULL,
+        name VARCHAR(120) NOT NULL,
+        password_hash VARCHAR(255) NOT NULL,
+        role ENUM('user', 'admin') NOT NULL DEFAULT 'user',
+        created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+        updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+        PRIMARY KEY (id),
+        UNIQUE KEY uq_users_email (email),
+        INDEX idx_users_role (role)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+
+    await this.execute(`
       CREATE TABLE IF NOT EXISTS chat_conversations (
         id CHAR(36) NOT NULL,
+        user_id CHAR(36) NULL,
         title VARCHAR(180) NOT NULL,
         model VARCHAR(120) NULL,
         created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
         updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
         deleted_at TIMESTAMP(3) NULL,
         PRIMARY KEY (id),
+        INDEX idx_chat_conversations_user_updated_at (user_id, updated_at),
         INDEX idx_chat_conversations_updated_at (updated_at),
-        INDEX idx_chat_conversations_deleted_at (deleted_at)
+        INDEX idx_chat_conversations_deleted_at (deleted_at),
+        CONSTRAINT fk_chat_conversations_user
+          FOREIGN KEY (user_id)
+          REFERENCES users (id)
+          ON DELETE SET NULL
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
+
+    await this.ensureChatConversationUserColumn();
 
     await this.execute(`
       CREATE TABLE IF NOT EXISTS chat_messages (
@@ -104,5 +127,64 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
           ON DELETE CASCADE
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
+  }
+
+  private async ensureChatConversationUserColumn() {
+    const columns = await this.query<RowDataPacket[]>(
+      `
+        SELECT COLUMN_NAME
+        FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = 'chat_conversations'
+          AND COLUMN_NAME = 'user_id'
+        LIMIT 1
+      `,
+    );
+
+    if (columns.length === 0) {
+      await this.execute(`
+        ALTER TABLE chat_conversations
+        ADD COLUMN user_id CHAR(36) NULL AFTER id
+      `);
+    }
+
+    const indexes = await this.query<RowDataPacket[]>(
+      `
+        SELECT INDEX_NAME
+        FROM INFORMATION_SCHEMA.STATISTICS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = 'chat_conversations'
+          AND INDEX_NAME = 'idx_chat_conversations_user_updated_at'
+        LIMIT 1
+      `,
+    );
+
+    if (indexes.length === 0) {
+      await this.execute(`
+        ALTER TABLE chat_conversations
+        ADD INDEX idx_chat_conversations_user_updated_at (user_id, updated_at)
+      `);
+    }
+
+    const constraints = await this.query<RowDataPacket[]>(
+      `
+        SELECT CONSTRAINT_NAME
+        FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = 'chat_conversations'
+          AND CONSTRAINT_NAME = 'fk_chat_conversations_user'
+        LIMIT 1
+      `,
+    );
+
+    if (constraints.length === 0) {
+      await this.execute(`
+        ALTER TABLE chat_conversations
+        ADD CONSTRAINT fk_chat_conversations_user
+          FOREIGN KEY (user_id)
+          REFERENCES users (id)
+          ON DELETE SET NULL
+      `);
+    }
   }
 }

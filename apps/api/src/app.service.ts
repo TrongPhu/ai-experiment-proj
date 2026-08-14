@@ -3,6 +3,14 @@ import {
   BadRequestException,
   Injectable,
 } from '@nestjs/common';
+import { AuthService } from './auth.service';
+import type {
+  AuthUser,
+  GoogleLoginDto,
+  LoginDto,
+  PublicRegisterDto,
+  RegisterUserDto,
+} from './auth.service';
 import { ChatHistoryService } from './chat-history.service';
 import { KnowledgeService } from './knowledge.service';
 import type { CreateKnowledgeDocumentDto } from './knowledge.service';
@@ -30,6 +38,7 @@ interface OllamaChatResponse {
 @Injectable()
 export class AppService {
   constructor(
+    private readonly auth: AuthService,
     private readonly chatHistory: ChatHistoryService,
     private readonly knowledge: KnowledgeService,
   ) {}
@@ -41,22 +50,21 @@ export class AppService {
     process.env.OLLAMA_TIMEOUT_MS ?? 300_000,
   );
 
-  async chat(request: ChatRequestDto) {
+  async chat(request: ChatRequestDto, user?: AuthUser) {
     const normalizedMessages = this.normalizeMessages(request.messages);
     const model = request.model?.trim() || this.defaultModel;
     const userMessage = this.getLatestUserMessage(normalizedMessages);
-    const context = await this.knowledge.search(userMessage.content);
+    const context = user
+      ? await this.knowledge.search(userMessage.content)
+      : [];
     const messages = this.withDefaultSystemPrompt(normalizedMessages, context);
-    const conversationId =
-      request.conversationId?.trim() ||
-      (
-        await this.chatHistory.createConversation(
-          this.chatHistory.titleFromMessage(userMessage.content),
-          model,
-        )
-      ).id;
+    const conversationId = user
+      ? await this.resolveConversationId(request, user, userMessage, model)
+      : null;
 
-    await this.chatHistory.addMessage(conversationId, userMessage);
+    if (conversationId) {
+      await this.chatHistory.addMessage(conversationId, userMessage);
+    }
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), this.requestTimeoutMs);
 
@@ -91,10 +99,12 @@ export class AppService {
         content: answer,
       };
 
-      await this.chatHistory.addMessage(conversationId, assistantMessage, {
-        model: data.model ?? model,
-        totalDuration: data.total_duration,
-      });
+      if (conversationId) {
+        await this.chatHistory.addMessage(conversationId, assistantMessage, {
+          model: data.model ?? model,
+          totalDuration: data.total_duration,
+        });
+      }
 
       return {
         conversationId,
@@ -128,16 +138,45 @@ export class AppService {
     };
   }
 
-  listConversations() {
-    return this.chatHistory.listConversations();
+  listConversations(user: AuthUser) {
+    return this.chatHistory.listConversations(user.id);
   }
 
-  getConversation(id: string) {
-    return this.chatHistory.getConversation(id);
+  getConversation(user: AuthUser, id: string) {
+    return this.chatHistory.getConversation(user.id, id);
   }
 
-  deleteConversation(id: string) {
-    return this.chatHistory.softDeleteConversation(id);
+  deleteConversation(user: AuthUser, id: string) {
+    return this.chatHistory.softDeleteConversation(user.id, id);
+  }
+
+  login(request: LoginDto) {
+    return this.auth.login(request);
+  }
+
+  registerPublic(request: PublicRegisterDto) {
+    return this.auth.registerPublic(request);
+  }
+
+  loginWithGoogle(request: GoogleLoginDto) {
+    return this.auth.loginWithGoogle(request);
+  }
+
+  googleAuthConfig() {
+    return {
+      clientId:
+        process.env.GOOGLE_CLIENT_ID?.trim() ||
+        process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID?.trim() ||
+        null,
+    };
+  }
+
+  registerUser(request: RegisterUserDto, actor?: AuthUser) {
+    return this.auth.register(request, actor);
+  }
+
+  listUsers() {
+    return this.auth.listUsers();
   }
 
   listKnowledgeDocuments() {
@@ -223,5 +262,28 @@ export class AppService {
     }
 
     return userMessage;
+  }
+
+  private async resolveConversationId(
+    request: ChatRequestDto,
+    user: AuthUser,
+    userMessage: ChatMessage,
+    model: string,
+  ) {
+    const requestedConversationId = request.conversationId?.trim();
+
+    if (requestedConversationId) {
+      return (
+        await this.chatHistory.getConversation(user.id, requestedConversationId)
+      ).id;
+    }
+
+    return (
+      await this.chatHistory.createConversation(
+        user.id,
+        this.chatHistory.titleFromMessage(userMessage.content),
+        model,
+      )
+    ).id;
   }
 }
