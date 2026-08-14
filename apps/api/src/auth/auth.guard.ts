@@ -43,7 +43,11 @@ export class AuthGuard implements CanActivate {
       : this.extractBearerToken(request);
 
     if (!token) {
-      return true;
+      if (optionalAuth) {
+        return true;
+      }
+
+      throw new UnauthorizedException('Bearer token is required.');
     }
 
     const user = await this.authService.verifyToken(token);

@@ -74,12 +74,12 @@ export async function requestJson<T>(
   url: string,
   options?: RequestInit,
 ): Promise<T> {
-  let response = await fetch(url, options);
+  let response = await safeFetch(url, options);
 
   if (response.status === 401 && shouldTryRefresh(url)) {
     const refreshed = await refreshSession();
     if (refreshed) {
-      response = await fetch(url, withAuthHeaders(options));
+      response = await safeFetch(url, withAuthHeaders(options));
     }
   }
 
@@ -100,6 +100,16 @@ export async function requestJson<T>(
   }
 
   return response.json() as Promise<T>;
+}
+
+async function safeFetch(url: string, options?: RequestInit) {
+  try {
+    return await fetch(url, options);
+  } catch {
+    throw new Error(
+      `Cannot connect to API at ${apiUrl}. Check that the NestJS backend is running.`,
+    );
+  }
 }
 
 function shouldTryRefresh(url: string) {

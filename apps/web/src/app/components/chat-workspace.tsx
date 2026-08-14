@@ -264,12 +264,15 @@ export function ChatWorkspace({
 
   const applyAuthSession = useCallback(
     async (data: AuthSession) => {
+      openConversationRequestRef.current += 1;
       setAuthToken(data.accessToken);
       setRefreshToken(data.refreshToken);
       setSession(data.user);
       setShowLogin(false);
       setMessages(starterMessages);
       setActiveConversationId(null);
+      setHistoryLoading(false);
+      setError("");
       updateConversationUrl(null);
 
       const nextConversations = await requestJson<Conversation[]>(
@@ -659,12 +662,14 @@ export function ChatWorkspace({
   }
 
   function logout() {
+    openConversationRequestRef.current += 1;
     clearAuthToken();
     setSession(null);
     setConversations([]);
     setActiveConversationId(null);
     setMessages(starterMessages);
     setError("");
+    setHistoryLoading(false);
     setShowLogin(false);
     updateConversationUrl(null);
   }
