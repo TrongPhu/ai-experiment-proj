@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { RowDataPacket } from 'mysql2';
-import { DatabaseService } from './database.service';
+import { DatabaseService } from '../database/database.service';
 
 export interface CreateKnowledgeDocumentDto {
   title: string;

@@ -3,17 +3,19 @@ import {
   BadRequestException,
   Injectable,
 } from '@nestjs/common';
-import { AuthService } from './auth.service';
+import { AuthService } from './auth/auth.service';
 import type {
   AuthUser,
+  ChangePasswordDto,
   GoogleLoginDto,
   LoginDto,
   PublicRegisterDto,
+  RefreshTokenDto,
   RegisterUserDto,
-} from './auth.service';
-import { ChatHistoryService } from './chat-history.service';
-import { KnowledgeService } from './knowledge.service';
-import type { CreateKnowledgeDocumentDto } from './knowledge.service';
+} from './auth/auth.service';
+import { ChatHistoryService } from './chat/chat-history.service';
+import { KnowledgeService } from './knowledge/knowledge.service';
+import type { CreateKnowledgeDocumentDto } from './knowledge/knowledge.service';
 
 type ChatRole = 'system' | 'user' | 'assistant';
 
@@ -152,6 +154,18 @@ export class AppService {
 
   login(request: LoginDto) {
     return this.auth.login(request);
+  }
+
+  refreshSession(request: RefreshTokenDto) {
+    return this.auth.refreshSession(request);
+  }
+
+  logout(user: AuthUser, refreshToken?: string) {
+    return this.auth.logout(user, refreshToken);
+  }
+
+  changePassword(user: AuthUser, request: ChangePasswordDto) {
+    return this.auth.changePassword(user, request);
   }
 
   registerPublic(request: PublicRegisterDto) {

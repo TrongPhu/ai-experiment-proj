@@ -1,8 +1,8 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { RowDataPacket } from 'mysql2';
-import { DatabaseService } from './database.service';
-import type { ChatMessage } from './app.service';
+import { DatabaseService } from '../database/database.service';
+import type { ChatMessage } from '../app.service';
 
 export interface ChatConversationSummary {
   id: string;

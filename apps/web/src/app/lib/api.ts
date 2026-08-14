@@ -20,10 +20,12 @@ export type AuthUser = {
 
 export type AuthSession = {
   accessToken: string;
+  refreshToken: string;
   user: AuthUser;
 };
 
 export const authTokenKey = "ai-experiment-auth-token";
+export const refreshTokenKey = "ai-experiment-refresh-token";
 
 export function getAuthToken() {
   if (typeof window === "undefined") {
@@ -37,8 +39,21 @@ export function setAuthToken(token: string) {
   window.localStorage.setItem(authTokenKey, token);
 }
 
+export function setRefreshToken(token: string) {
+  window.localStorage.setItem(refreshTokenKey, token);
+}
+
+export function getRefreshToken() {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  return window.localStorage.getItem(refreshTokenKey);
+}
+
 export function clearAuthToken() {
   window.localStorage.removeItem(authTokenKey);
+  window.localStorage.removeItem(refreshTokenKey);
 }
 
 export function withAuthHeaders(options: RequestInit = {}): RequestInit {
@@ -59,7 +74,14 @@ export async function requestJson<T>(
   url: string,
   options?: RequestInit,
 ): Promise<T> {
-  const response = await fetch(url, options);
+  let response = await fetch(url, options);
+
+  if (response.status === 401 && shouldTryRefresh(url)) {
+    const refreshed = await refreshSession();
+    if (refreshed) {
+      response = await fetch(url, withAuthHeaders(options));
+    }
+  }
 
   if (!response.ok) {
     const detail = await response.text();
@@ -78,4 +100,39 @@ export async function requestJson<T>(
   }
 
   return response.json() as Promise<T>;
+}
+
+function shouldTryRefresh(url: string) {
+  const refreshToken = getRefreshToken();
+
+  return (
+    Boolean(refreshToken) &&
+    !url.includes("/auth/login") &&
+    !url.includes("/auth/register") &&
+    !url.includes("/auth/google") &&
+    !url.includes("/auth/refresh")
+  );
+}
+
+async function refreshSession() {
+  const refreshToken = getRefreshToken();
+  if (!refreshToken) {
+    return false;
+  }
+
+  const response = await fetch(`${apiUrl}/auth/refresh`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ refreshToken }),
+  });
+
+  if (!response.ok) {
+    clearAuthToken();
+    return false;
+  }
+
+  const session = (await response.json()) as AuthSession;
+  setAuthToken(session.accessToken);
+  setRefreshToken(session.refreshToken);
+  return true;
 }

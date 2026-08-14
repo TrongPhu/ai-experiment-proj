@@ -1,9 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-import { AuthService } from './auth.service';
-import { ChatHistoryService } from './chat-history.service';
-import { KnowledgeService } from './knowledge.service';
+import { AuthService } from './auth/auth.service';
+import { ChatHistoryService } from './chat/chat-history.service';
+import { KnowledgeService } from './knowledge/knowledge.service';
 
 describe('AppController', () => {
   let appController: AppController;

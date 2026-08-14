@@ -10,15 +10,17 @@ import {
 } from '@nestjs/common';
 import { AppService } from './app.service';
 import type { ChatRequestDto } from './app.service';
-import { OptionalAuth, RequiredRole } from './auth.guard';
-import type { AuthenticatedRequest } from './auth.guard';
+import { OptionalAuth, RequiredRole } from './auth/auth.guard';
+import type { AuthenticatedRequest } from './auth/auth.guard';
 import type {
+  ChangePasswordDto,
   GoogleLoginDto,
   LoginDto,
   PublicRegisterDto,
+  RefreshTokenDto,
   RegisterUserDto,
-} from './auth.service';
-import type { CreateKnowledgeDocumentDto } from './knowledge.service';
+} from './auth/auth.service';
+import type { CreateKnowledgeDocumentDto } from './knowledge/knowledge.service';
 
 @Controller()
 export class AppController {
@@ -41,6 +43,29 @@ export class AppController {
   @Post('auth/login')
   login(@Body() request: LoginDto) {
     return this.appService.login(request);
+  }
+
+  @Post('auth/refresh')
+  refresh(@Body() request: RefreshTokenDto) {
+    return this.appService.refreshSession(request);
+  }
+
+  @Post('auth/logout')
+  @RequiredRole('user')
+  logout(
+    @Body() request: Partial<RefreshTokenDto>,
+    @Req() httpRequest: AuthenticatedRequest,
+  ) {
+    return this.appService.logout(httpRequest.user!, request.refreshToken);
+  }
+
+  @Post('auth/change-password')
+  @RequiredRole('user')
+  changePassword(
+    @Body() request: ChangePasswordDto,
+    @Req() httpRequest: AuthenticatedRequest,
+  ) {
+    return this.appService.changePassword(httpRequest.user!, request);
   }
 
   @Post('auth/register')

@@ -111,6 +111,7 @@ DB_NAME=ai-experiment-proj
 DB_CONNECTION_LIMIT=10
 JWT_SECRET=change-this-local-secret
 JWT_EXPIRES_IN=7d
+REFRESH_TOKEN_EXPIRES_DAYS=30
 BOOTSTRAP_ADMIN_EMAIL=admin@example.com
 BOOTSTRAP_ADMIN_PASSWORD=admin123456
 BOOTSTRAP_ADMIN_NAME=Admin
@@ -167,13 +168,24 @@ ai-experiment-proj
 
 Va tao cac bang can thiet:
 
+- `schema_migrations`: luu cac migration backend da chay
 - `users`: luu user va quyen `user`/`admin`
+- `auth_refresh_tokens`: luu refresh token da hash de quan ly phien dang nhap
 - `chat_conversations`: luu danh sach hoi thoai, moi hoi thoai gan voi mot `users.id`
 - `chat_messages`: luu tung tin nhan trong hoi thoai
 - `knowledge_documents`: luu tai lieu rieng
 - `knowledge_chunks`: luu cac doan tai lieu va embedding de tim kiem
 
 Luu y: MySQL chay o `localhost:3306`, khong phai `http://localhost:3306`.
+
+Backend hien da tach thanh cac module ro rang:
+
+- `DatabaseModule`: ket noi MySQL va chay migration co version
+- `AuthModule`: login, register, Google login, refresh token, logout, doi mat khau, guard phan quyen
+- `ChatModule`: lich su hoi thoai theo user
+- `KnowledgeModule`: tai lieu rieng, chunk, embedding, search RAG
+
+Khi NestJS start, `MigrationService` se tu chay cac migration chua co trong bang `schema_migrations`.
 
 ## 7. Chay Ung Dung
 
@@ -251,15 +263,25 @@ Sau do:
 2. Bam `Chat moi` de tao hoi thoai moi
 3. Nhap cau hoi vao o chat
 4. Bam nut gui
-5. Neu muon luu lich su, bam `Login to save history` o sidebar va dang nhap
+5. Neu muon luu lich su, bam profile o day sidebar va dang nhap
 6. Sau khi dang nhap, lich su chat se hien ben trai
 
-Tai form `Login to save history`, user co the:
+Tai menu profile o day sidebar, user co the:
 
 - Dang nhap bang email/password
 - Bam tab `Register` de tu tao tai khoan nhanh voi ten, email, mat khau
 - Tai khoan tu tao luon co quyen `user`, khong the tu tao `admin`
 - Dang nhap bang Google neu da cau hinh Google Client ID
+- Dang xuat khoi tai khoan hien tai
+
+Sidebar duoc lam gon giong Copilot:
+
+- `Chat moi` nam tren cung de tao luong hoi thoai moi
+- `Lich su` chi hien cac hoi thoai cua user dang dang nhap
+- `Chu de` va `Cau hoi theo chu de` nam trong vung scroll
+- Profile nam co dinh o day sidebar
+- Neu text bi cat thanh dau `...`, dua chuot len text do de xem tooltip day du noi dung
+- Link `Knowledge admin` va `User management` chi hien trong menu profile khi user co quyen `admin`
 
 Lich su chat duoc gan theo user dang nhap:
 
@@ -356,6 +378,18 @@ Quyen hien tai:
 - `guest`: hoi dap duoc, khong luu lich su, khong dung private knowledge
 - `user`: dang nhap chat duoc, co lich su chat rieng, nhung khong duoc vao Knowledge Admin
 - `admin`: duoc vao Knowledge Admin, nhap data, xoa data, tao user
+
+Auth hien co cac API chinh:
+
+- `POST /auth/login`: dang nhap email/password, tra ve `accessToken` va `refreshToken`
+- `POST /auth/register`: user tu dang ky, role luon la `user`
+- `POST /auth/google`: dang nhap Google bang Google ID token
+- `POST /auth/refresh`: doi `refreshToken` lay access token moi
+- `POST /auth/logout`: revoke refresh token
+- `POST /auth/change-password`: doi mat khau va revoke cac refresh token cu
+- `GET /auth/me`: lay user hien tai
+
+Frontend se tu luu `accessToken` va `refreshToken` trong localStorage. Khi access token het han, FE se goi `/auth/refresh` de lay token moi.
 
 Khi dung that, nen doi:
 

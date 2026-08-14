@@ -4,13 +4,13 @@ import {
   OnModuleInit,
   UnauthorizedException,
 } from '@nestjs/common';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import * as bcrypt from 'bcryptjs';
 import * as jwt from 'jsonwebtoken';
 import type { SignOptions } from 'jsonwebtoken';
 import { OAuth2Client } from 'google-auth-library';
 import { RowDataPacket } from 'mysql2';
-import { DatabaseService } from './database.service';
+import { DatabaseService } from '../database/database.service';
 
 export type UserRole = 'user' | 'admin';
 
@@ -43,6 +43,15 @@ export interface GoogleLoginDto {
   credential: string;
 }
 
+export interface RefreshTokenDto {
+  refreshToken: string;
+}
+
+export interface ChangePasswordDto {
+  currentPassword: string;
+  newPassword: string;
+}
+
 interface UserRow extends RowDataPacket {
   id: string;
   email: string;
@@ -51,6 +60,14 @@ interface UserRow extends RowDataPacket {
   role: UserRole;
   created_at: Date;
   updated_at: Date;
+}
+
+interface RefreshTokenRow extends RowDataPacket {
+  id: string;
+  user_id: string;
+  token_hash: string;
+  expires_at: Date;
+  revoked_at: Date | null;
 }
 
 interface JwtPayload {
@@ -65,6 +82,9 @@ export class AuthService implements OnModuleInit {
     process.env.JWT_SECRET ?? 'local-dev-secret-change-me';
   private readonly jwtExpiresIn = (process.env.JWT_EXPIRES_IN ??
     '7d') as SignOptions['expiresIn'];
+  private readonly refreshTokenExpiresDays = Number(
+    process.env.REFRESH_TOKEN_EXPIRES_DAYS ?? 30,
+  );
   private readonly googleClientId =
     process.env.GOOGLE_CLIENT_ID?.trim() ||
     process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID?.trim();
@@ -121,10 +141,7 @@ export class AuthService implements OnModuleInit {
   async registerPublic(request: PublicRegisterDto) {
     const user = await this.register({ ...request, role: 'user' });
 
-    return {
-      accessToken: this.signToken(user),
-      user,
-    };
+    return this.createSession(user);
   }
 
   async login(request: LoginDto) {
@@ -145,10 +162,7 @@ export class AuthService implements OnModuleInit {
 
     const publicUser = this.toPublicUser(user);
 
-    return {
-      accessToken: this.signToken(publicUser),
-      user: publicUser,
-    };
+    return this.createSession(publicUser);
   }
 
   async loginWithGoogle(request: GoogleLoginDto) {
@@ -195,10 +209,99 @@ export class AuthService implements OnModuleInit {
 
     const publicUser = this.toPublicUser(user);
 
-    return {
-      accessToken: this.signToken(publicUser),
-      user: publicUser,
-    };
+    return this.createSession(publicUser);
+  }
+
+  async refreshSession(request: RefreshTokenDto) {
+    const token = request.refreshToken?.trim();
+
+    if (!token) {
+      throw new BadRequestException('refreshToken is required.');
+    }
+
+    const rows = await this.database.query<RefreshTokenRow[]>(
+      `
+        SELECT id, user_id, token_hash, expires_at, revoked_at
+        FROM auth_refresh_tokens
+        WHERE token_hash = ?
+          AND revoked_at IS NULL
+          AND expires_at > CURRENT_TIMESTAMP(3)
+        LIMIT 1
+      `,
+      [this.hashToken(token)],
+    );
+    const refreshToken = rows[0];
+
+    if (!refreshToken) {
+      throw new UnauthorizedException('Invalid or expired refresh token.');
+    }
+
+    const user = await this.findById(refreshToken.user_id);
+    if (!user) {
+      throw new UnauthorizedException('User not found.');
+    }
+
+    await this.revokeRefreshTokenById(refreshToken.id);
+    return this.createSession(this.toPublicUser(user));
+  }
+
+  async logout(user: AuthUser, refreshToken?: string) {
+    if (refreshToken?.trim()) {
+      await this.database.execute(
+        `
+          UPDATE auth_refresh_tokens
+          SET revoked_at = CURRENT_TIMESTAMP(3)
+          WHERE user_id = ? AND token_hash = ? AND revoked_at IS NULL
+        `,
+        [user.id, this.hashToken(refreshToken)],
+      );
+      return { ok: true };
+    }
+
+    await this.database.execute(
+      `
+        UPDATE auth_refresh_tokens
+        SET revoked_at = CURRENT_TIMESTAMP(3)
+        WHERE user_id = ? AND revoked_at IS NULL
+      `,
+      [user.id],
+    );
+
+    return { ok: true };
+  }
+
+  async changePassword(user: AuthUser, request: ChangePasswordDto) {
+    const currentPassword = request.currentPassword ?? '';
+    const newPassword = request.newPassword ?? '';
+
+    if (newPassword.length < 8) {
+      throw new BadRequestException(
+        'newPassword must contain at least 8 chars.',
+      );
+    }
+
+    const row = await this.findById(user.id);
+    if (!row) {
+      throw new UnauthorizedException('User not found.');
+    }
+
+    const isValid = await bcrypt.compare(currentPassword, row.password_hash);
+    if (!isValid) {
+      throw new UnauthorizedException('Current password is invalid.');
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, 12);
+    await this.database.execute(
+      `
+        UPDATE users
+        SET password_hash = ?
+        WHERE id = ?
+      `,
+      [passwordHash, user.id],
+    );
+    await this.logout(user);
+
+    return { ok: true };
   }
 
   async verifyToken(token: string): Promise<AuthUser> {
@@ -303,6 +406,44 @@ export class AuthService implements OnModuleInit {
       },
       this.jwtSecret,
       { expiresIn: this.jwtExpiresIn },
+    );
+  }
+
+  private async createSession(user: AuthUser) {
+    const refreshToken = randomBytes(48).toString('base64url');
+    const expiresAt = new Date(
+      Date.now() + this.refreshTokenExpiresDays * 24 * 60 * 60 * 1000,
+    );
+
+    await this.database.execute(
+      `
+        INSERT INTO auth_refresh_tokens
+          (id, user_id, token_hash, expires_at)
+        VALUES
+          (?, ?, ?, ?)
+      `,
+      [randomUUID(), user.id, this.hashToken(refreshToken), expiresAt],
+    );
+
+    return {
+      accessToken: this.signToken(user),
+      refreshToken,
+      user,
+    };
+  }
+
+  private hashToken(token: string) {
+    return createHash('sha256').update(token).digest('hex');
+  }
+
+  private async revokeRefreshTokenById(id: string) {
+    await this.database.execute(
+      `
+        UPDATE auth_refresh_tokens
+        SET revoked_at = CURRENT_TIMESTAMP(3)
+        WHERE id = ? AND revoked_at IS NULL
+      `,
+      [id],
     );
   }
 

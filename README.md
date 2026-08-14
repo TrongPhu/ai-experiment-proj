@@ -103,6 +103,7 @@ DB_NAME=ai-experiment-proj
 DB_CONNECTION_LIMIT=10
 JWT_SECRET=change-this-local-secret
 JWT_EXPIRES_IN=7d
+REFRESH_TOKEN_EXPIRES_DAYS=30
 BOOTSTRAP_ADMIN_EMAIL=admin@example.com
 BOOTSTRAP_ADMIN_PASSWORD=admin123456
 BOOTSTRAP_ADMIN_NAME=Admin
@@ -238,7 +239,9 @@ apps/api/database/schema.sql
 
 This file creates the `ai-experiment-proj` database and these tables:
 
+- `schema_migrations`: tracks backend migrations already applied
 - `users`: stores authenticated users and their roles
+- `auth_refresh_tokens`: stores hashed refresh tokens for login sessions
 - `chat_conversations`: stores one row per chat thread and links it to `users.id`
 - `chat_messages`: stores user and assistant messages for each conversation
 - `knowledge_documents`: stores private documents you add to the app
@@ -266,15 +269,22 @@ mysql -u your_user -p < apps/api/database/schema.sql
 
 Then update `apps/api/.env` with the correct user/password.
 
-### Option 2: Create The Database First, Let Backend Create Tables
+### Option 2: Create The Database First, Let Backend Run Migrations
 
-The backend runs `CREATE TABLE IF NOT EXISTS`, so you can create only the database first:
+The backend has a versioned migration runner. You can create only the database first:
 
 ```bash
 mysql -u root -p -e "CREATE DATABASE IF NOT EXISTS \`ai-experiment-proj\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
 ```
 
-Then run the app. When NestJS starts, the backend will create missing tables automatically.
+Then run the app. When NestJS starts, `MigrationService` applies any migration not yet listed in `schema_migrations`.
+
+Current backend modules:
+
+- `DatabaseModule`: MySQL pool and versioned migrations
+- `AuthModule`: login, register, Google login, refresh tokens, logout, password changes, role guard
+- `ChatModule`: user-owned chat conversations and messages
+- `KnowledgeModule`: private documents, chunks, embeddings, retrieval
 
 ## 6. Run The App
 
@@ -335,7 +345,16 @@ Do not commit `.env` or `.env.local`; only `.env.example` files belong in git.
 
 The chat page can be used as a guest. Guest chats are not saved to MySQL.
 
-To save and reopen chat history, log in from the sidebar. Use the bootstrap admin account first, then create more users from `/admin/users`.
+To save and reopen chat history, open the compact profile menu at the bottom of the sidebar and log in. Use the bootstrap admin account first, then create more users from `/admin/users`.
+
+Sidebar behavior:
+
+- `New chat` starts a fresh conversation.
+- `History` shows only the logged-in user's conversations.
+- Long conversation titles, topic descriptions, and sample questions are truncated to keep the sidebar compact.
+- Hover truncated sidebar text to see the full value in a tooltip.
+- The bottom profile row opens the account menu.
+- Admin-only links such as `Knowledge admin` and `User management` appear only for users with role `admin`.
 
 Open a conversation directly by slug:
 
@@ -426,7 +445,7 @@ The backend uses JWT Bearer tokens. The frontend stores the token in browser `lo
 
 `POST /chat` works without a token for guest chat. If a valid token is sent, the backend saves the chat under that user and can use private knowledge context. Without a token, the backend does not save history and does not use private knowledge context.
 
-Users can create their own account from the chat sidebar. Self-registration always creates role `user`; only admins can create role `admin` from `/admin/users`.
+Users can create their own account from the profile menu at the bottom of the chat sidebar. Self-registration always creates role `user`; only admins can create role `admin` from `/admin/users`.
 
 ### Bootstrap Admin User
 
@@ -526,6 +545,7 @@ Response:
 ```json
 {
   "accessToken": "jwt-token",
+  "refreshToken": "refresh-token",
   "user": {
     "id": "user-id",
     "email": "admin@example.com",
@@ -534,6 +554,55 @@ Response:
   }
 }
 ```
+
+Refresh an expired access token:
+
+```http
+POST /auth/refresh
+```
+
+Body:
+
+```json
+{
+  "refreshToken": "refresh-token"
+}
+```
+
+Logout revokes refresh tokens:
+
+```http
+POST /auth/logout
+Authorization: Bearer <token>
+```
+
+Body with one refresh token:
+
+```json
+{
+  "refreshToken": "refresh-token"
+}
+```
+
+If no `refreshToken` is sent, the backend revokes all active refresh tokens for that user.
+
+Change password:
+
+```http
+POST /auth/change-password
+Authorization: Bearer <token>
+```
+
+Body:
+
+```json
+{
+  "currentPassword": "old-password",
+  "newPassword": "new-password-123"
+}
+```
+
+Changing password revokes all active refresh tokens for that user.
 
 Get current user:
 
@@ -596,15 +665,30 @@ Why `bge-m3`: it is multilingual and supports long-document retrieval use cases,
 6. Click `Add to knowledge`
 7. Ask questions in chat
 
-The chat sidebar links to this view through `Knowledge admin`. Keep this route as the future admin-only area when authentication/authorization is added.
+The chat sidebar links to this view from the bottom profile menu, but only when the current user has role `admin`.
 
 Current supported input is plain text/markdown pasted into the UI. PDF/DOCX upload is not implemented yet; convert those files to text first.
 
 ### Add Private Data From API
 
+These endpoints require an admin bearer token. First log in:
+
+```bash
+curl -X POST http://localhost:3001/auth/login ^
+  -H "Content-Type: application/json" ^
+  -d "{\"email\":\"admin@example.com\",\"password\":\"admin123456\"}"
+```
+
+Copy the returned `accessToken`, then call admin APIs with:
+
+```http
+Authorization: Bearer <accessToken>
+```
+
 ```bash
 curl -X POST http://localhost:3001/knowledge/documents ^
   -H "Content-Type: application/json" ^
+  -H "Authorization: Bearer <accessToken>" ^
   -d "{\"title\":\"Company policy\",\"content\":\"Paste private text here\"}"
 ```
 
@@ -613,25 +697,29 @@ macOS/Linux/Git Bash:
 ```bash
 curl -X POST http://localhost:3001/knowledge/documents \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <accessToken>" \
   -d '{"title":"Company policy","content":"Paste private text here"}'
 ```
 
 List private documents:
 
 ```bash
-curl http://localhost:3001/knowledge/documents
+curl http://localhost:3001/knowledge/documents ^
+  -H "Authorization: Bearer <accessToken>"
 ```
 
 Search private data directly:
 
 ```bash
-curl "http://localhost:3001/knowledge/search?q=your%20question"
+curl "http://localhost:3001/knowledge/search?q=your%20question" ^
+  -H "Authorization: Bearer <accessToken>"
 ```
 
 Delete a private document:
 
 ```bash
-curl -X DELETE http://localhost:3001/knowledge/documents/<document-id>
+curl -X DELETE http://localhost:3001/knowledge/documents/<document-id> ^
+  -H "Authorization: Bearer <accessToken>"
 ```
 
 ### Recommended Models For This Project
@@ -792,6 +880,26 @@ Google login:
 
 ```http
 POST /auth/google
+```
+
+Refresh access token:
+
+```http
+POST /auth/refresh
+```
+
+Logout and revoke refresh tokens:
+
+```http
+POST /auth/logout
+Authorization: Bearer <token>
+```
+
+Change password and revoke existing refresh tokens:
+
+```http
+POST /auth/change-password
+Authorization: Bearer <token>
 ```
 
 Chat as guest or logged-in user:

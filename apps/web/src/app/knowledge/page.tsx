@@ -21,6 +21,7 @@ import {
   KnowledgeDocument,
   requestJson,
   setAuthToken,
+  setRefreshToken,
   withAuthHeaders,
 } from "../lib/api";
 
@@ -87,6 +88,7 @@ export default function KnowledgePage() {
       });
 
       setAuthToken(data.accessToken);
+      setRefreshToken(data.refreshToken);
       setSession(data.user);
       if (data.user.role === "admin") {
         await loadAdminData();

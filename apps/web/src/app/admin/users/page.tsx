@@ -24,6 +24,7 @@ import {
   clearAuthToken,
   requestJson,
   setAuthToken,
+  setRefreshToken,
   withAuthHeaders,
 } from "../../lib/api";
 
@@ -111,6 +112,7 @@ export default function AdminUsersPage() {
       });
 
       setAuthToken(data.accessToken);
+      setRefreshToken(data.refreshToken);
       setSession(data.user);
       if (data.user.role === "admin") {
         await loadUsers();

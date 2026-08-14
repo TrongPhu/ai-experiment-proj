@@ -4,6 +4,13 @@ CREATE DATABASE IF NOT EXISTS `ai-experiment-proj`
 
 USE `ai-experiment-proj`;
 
+CREATE TABLE IF NOT EXISTS schema_migrations (
+  id VARCHAR(80) NOT NULL,
+  name VARCHAR(180) NOT NULL,
+  applied_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS users (
   id CHAR(36) NOT NULL,
   email VARCHAR(180) NOT NULL,
@@ -15,6 +22,23 @@ CREATE TABLE IF NOT EXISTS users (
   PRIMARY KEY (id),
   UNIQUE KEY uq_users_email (email),
   INDEX idx_users_role (role)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS auth_refresh_tokens (
+  id CHAR(36) NOT NULL,
+  user_id CHAR(36) NOT NULL,
+  token_hash VARCHAR(255) NOT NULL,
+  expires_at TIMESTAMP(3) NOT NULL,
+  revoked_at TIMESTAMP(3) NULL,
+  created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_auth_refresh_tokens_hash (token_hash),
+  INDEX idx_auth_refresh_tokens_user_id (user_id),
+  INDEX idx_auth_refresh_tokens_expires_at (expires_at),
+  CONSTRAINT fk_auth_refresh_tokens_user
+    FOREIGN KEY (user_id)
+    REFERENCES users (id)
+    ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS chat_conversations (

@@ -11,7 +11,6 @@ import {
   useState,
 } from "react";
 import {
-  ArrowLeft,
   Bot,
   BrainCircuit,
   ChevronRight,
@@ -38,6 +37,7 @@ import {
   clearAuthToken,
   requestJson,
   setAuthToken,
+  setRefreshToken,
   withAuthHeaders,
 } from "../lib/api";
 
@@ -209,6 +209,7 @@ export function ChatWorkspace({
   const applyAuthSession = useCallback(
     async (data: AuthSession) => {
       setAuthToken(data.accessToken);
+      setRefreshToken(data.refreshToken);
       setSession(data.user);
       setShowLogin(false);
       setMessages(starterMessages);
@@ -585,6 +586,7 @@ export function ChatWorkspace({
     setActiveConversationId(null);
     setMessages(starterMessages);
     setError("");
+    setShowLogin(false);
     updateConversationUrl(null);
   }
 
@@ -605,6 +607,128 @@ export function ChatWorkspace({
     }
   }
 
+  const profileName = session?.name?.trim() || session?.email || "Guest";
+  const profileEmail = session?.email ?? "Chat without saved history";
+  const profileInitial = profileName.trim().charAt(0).toUpperCase() || "G";
+  const profileRole = session?.role === "admin" ? "Admin" : "Free Plan";
+
+  const authPanel = !session ? (
+    <form
+      onSubmit={authMode === "login" ? handleLogin : handleRegister}
+      className="space-y-2.5"
+    >
+      <div className="grid grid-cols-2 gap-2">
+        <button
+          type="button"
+          onClick={() => {
+            setAuthMode("login");
+            setError("");
+          }}
+          className={`h-9 rounded-md text-sm font-semibold transition ${
+            authMode === "login"
+              ? "bg-[#254d3a] text-white"
+              : "border border-[#dbe2d8] bg-[#fbfcfa] text-[#254d3a]"
+          }`}
+        >
+          Login
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setAuthMode("register");
+            setError("");
+          }}
+          className={`flex h-9 items-center justify-center gap-2 rounded-md text-sm font-semibold transition ${
+            authMode === "register"
+              ? "bg-[#254d3a] text-white"
+              : "border border-[#dbe2d8] bg-[#fbfcfa] text-[#254d3a]"
+          }`}
+        >
+          <UserPlus size={15} aria-hidden="true" />
+          Register
+        </button>
+      </div>
+
+      {authMode === "register" && (
+        <input
+          value={registerName}
+          onChange={(event) => setRegisterName(event.target.value)}
+          placeholder="Full name"
+          className="h-9 w-full rounded-md border border-[#cfd8cc] px-2.5 text-sm outline-none focus:border-[#709772] focus:ring-2 focus:ring-[#c7dcc3]"
+        />
+      )}
+
+      {authMode === "login" ? (
+        <>
+          <input
+            value={loginEmail}
+            onChange={(event) => setLoginEmail(event.target.value)}
+            placeholder="Email"
+            className="h-9 w-full rounded-md border border-[#cfd8cc] px-2.5 text-sm outline-none focus:border-[#709772] focus:ring-2 focus:ring-[#c7dcc3]"
+          />
+          <input
+            value={loginPassword}
+            onChange={(event) => setLoginPassword(event.target.value)}
+            placeholder="Password"
+            type="password"
+            className="h-9 w-full rounded-md border border-[#cfd8cc] px-2.5 text-sm outline-none focus:border-[#709772] focus:ring-2 focus:ring-[#c7dcc3]"
+          />
+        </>
+      ) : (
+        <>
+          <input
+            value={registerEmail}
+            onChange={(event) => setRegisterEmail(event.target.value)}
+            placeholder="Email"
+            className="h-9 w-full rounded-md border border-[#cfd8cc] px-2.5 text-sm outline-none focus:border-[#709772] focus:ring-2 focus:ring-[#c7dcc3]"
+          />
+          <input
+            value={registerPassword}
+            onChange={(event) => setRegisterPassword(event.target.value)}
+            placeholder="Password at least 8 chars"
+            type="password"
+            className="h-9 w-full rounded-md border border-[#cfd8cc] px-2.5 text-sm outline-none focus:border-[#709772] focus:ring-2 focus:ring-[#c7dcc3]"
+          />
+        </>
+      )}
+
+      <button
+        type="submit"
+        disabled={isLoading}
+        className="flex h-9 w-full items-center justify-center gap-2 rounded-md bg-[#254d3a] text-sm font-semibold text-white transition hover:bg-[#1d3e2e] disabled:cursor-not-allowed disabled:bg-[#aab4ad]"
+      >
+        {isLoading && (
+          <Loader2 className="animate-spin" size={16} aria-hidden="true" />
+        )}
+        {authMode === "login" ? "Login" : "Create account"}
+      </button>
+
+      {error && (
+        <p className="rounded-md border border-[#e2b6a8] bg-[#fff2ee] px-3 py-2 text-xs text-[#8a3a24]">
+          {error}
+        </p>
+      )}
+
+      <div className="flex items-center gap-2 text-xs text-[#647069]">
+        <span className="h-px flex-1 bg-[#dbe2d8]" />
+        Google
+        <span className="h-px flex-1 bg-[#dbe2d8]" />
+      </div>
+
+      {googleClientId ? (
+        <div
+          ref={googleButtonRef}
+          className={`min-h-9 ${googleReady ? "" : "opacity-70"}`}
+        />
+      ) : (
+        <p className="rounded-md border border-dashed border-[#dbe2d8] px-3 py-2 text-xs text-[#647069]">
+          Set NEXT_PUBLIC_GOOGLE_CLIENT_ID and GOOGLE_CLIENT_ID to enable Google
+          login.
+        </p>
+      )}
+    </form>
+  ) : null;
+
   if (!authChecked) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-[#f5f7f4] px-6 text-[#1f2723]">
@@ -616,187 +740,33 @@ export function ChatWorkspace({
   return (
     <main className="h-dvh overflow-hidden bg-[#f5f7f4] text-[#1f2723]">
       <div className="flex h-full min-h-0 flex-col lg:flex-row">
-        <aside className="shrink-0 border-b border-[#dbe2d8] bg-[#fbfcfa] lg:h-full lg:w-[360px] lg:border-b-0 lg:border-r">
+        <aside className="shrink-0 border-b border-[#dbe2d8] bg-[#fbfcfa] lg:h-full lg:w-[280px] lg:border-b-0 lg:border-r">
           <div className="flex h-full flex-col">
-            <div className="border-b border-[#dbe2d8] px-6 py-5">
-              <div className="flex items-center gap-3">
-                <div className="flex size-10 items-center justify-center rounded-md bg-[#254d3a] text-white">
-                  <Sparkles size={20} aria-hidden="true" />
+            <div className="border-b border-[#dbe2d8] px-4 py-3">
+              <div className="flex items-center gap-2.5">
+                <div className="flex size-9 items-center justify-center rounded-md bg-[#254d3a] text-white">
+                  <Sparkles size={18} aria-hidden="true" />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <h1 className="truncate text-lg font-semibold">AI Research Lab</h1>
-                  <p className="truncate text-sm text-[#647069]">
-                    {session?.email ?? "Guest chat"}
-                  </p>
+                  <h1 className="truncate text-base font-semibold">
+                    AI Research Lab
+                  </h1>
+                  <p className="truncate text-xs text-[#647069]">Local assistant</p>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={startNewChat}
-                className="mt-4 flex h-10 w-full items-center justify-center gap-2 rounded-md bg-[#254d3a] text-sm font-semibold text-white transition hover:bg-[#1d3e2e]"
+                className="mt-3 flex h-9 w-full items-center justify-center gap-2 rounded-md bg-[#254d3a] text-sm font-semibold text-white transition hover:bg-[#1d3e2e]"
               >
-                <Plus size={17} aria-hidden="true" />
+                <Plus size={16} aria-hidden="true" />
                 Chat mới
               </button>
-              {session ? (
-                <button
-                  type="button"
-                  onClick={logout}
-                  className="mt-2 flex h-10 w-full items-center justify-center gap-2 rounded-md border border-[#dbe2d8] bg-white text-sm font-semibold text-[#254d3a] transition hover:bg-[#f7faf5]"
-                >
-                  <LogOut size={16} aria-hidden="true" />
-                  Logout
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => setShowLogin((current) => !current)}
-                  className="mt-2 flex h-10 w-full items-center justify-center gap-2 rounded-md border border-[#dbe2d8] bg-white text-sm font-semibold text-[#254d3a] transition hover:bg-[#f7faf5]"
-                >
-                  <LogIn size={16} aria-hidden="true" />
-                  Login to save history
-                </button>
-              )}
             </div>
 
-            <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
-              {!session && showLogin && (
-                <form
-                  onSubmit={authMode === "login" ? handleLogin : handleRegister}
-                  className="mb-4 space-y-3 rounded-md border border-[#dbe2d8] bg-white p-3"
-                >
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setAuthMode("login");
-                        setError("");
-                      }}
-                      className={`h-9 rounded-md text-sm font-semibold transition ${
-                        authMode === "login"
-                          ? "bg-[#254d3a] text-white"
-                          : "border border-[#dbe2d8] bg-[#fbfcfa] text-[#254d3a]"
-                      }`}
-                    >
-                      Login
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setAuthMode("register");
-                        setError("");
-                      }}
-                      className={`flex h-9 items-center justify-center gap-2 rounded-md text-sm font-semibold transition ${
-                        authMode === "register"
-                          ? "bg-[#254d3a] text-white"
-                          : "border border-[#dbe2d8] bg-[#fbfcfa] text-[#254d3a]"
-                      }`}
-                    >
-                      <UserPlus size={15} aria-hidden="true" />
-                      Register
-                    </button>
-                  </div>
-
-                  {authMode === "register" && (
-                    <input
-                      value={registerName}
-                      onChange={(event) => setRegisterName(event.target.value)}
-                      placeholder="Full name"
-                      className="h-10 w-full rounded-md border border-[#cfd8cc] px-3 text-sm outline-none focus:border-[#709772] focus:ring-2 focus:ring-[#c7dcc3]"
-                    />
-                  )}
-
-                  {authMode === "login" ? (
-                    <>
-                      <input
-                        value={loginEmail}
-                        onChange={(event) => setLoginEmail(event.target.value)}
-                        placeholder="Email"
-                        className="h-10 w-full rounded-md border border-[#cfd8cc] px-3 text-sm outline-none focus:border-[#709772] focus:ring-2 focus:ring-[#c7dcc3]"
-                      />
-                      <input
-                        value={loginPassword}
-                        onChange={(event) => setLoginPassword(event.target.value)}
-                        placeholder="Password"
-                        type="password"
-                        className="h-10 w-full rounded-md border border-[#cfd8cc] px-3 text-sm outline-none focus:border-[#709772] focus:ring-2 focus:ring-[#c7dcc3]"
-                      />
-                    </>
-                  ) : (
-                    <>
-                      <input
-                        value={registerEmail}
-                        onChange={(event) => setRegisterEmail(event.target.value)}
-                        placeholder="Email"
-                        className="h-10 w-full rounded-md border border-[#cfd8cc] px-3 text-sm outline-none focus:border-[#709772] focus:ring-2 focus:ring-[#c7dcc3]"
-                      />
-                      <input
-                        value={registerPassword}
-                        onChange={(event) =>
-                          setRegisterPassword(event.target.value)
-                        }
-                        placeholder="Password at least 8 chars"
-                        type="password"
-                        className="h-10 w-full rounded-md border border-[#cfd8cc] px-3 text-sm outline-none focus:border-[#709772] focus:ring-2 focus:ring-[#c7dcc3]"
-                      />
-                    </>
-                  )}
-
-                  <button
-                    type="submit"
-                    disabled={isLoading}
-                    className="flex h-10 w-full items-center justify-center gap-2 rounded-md bg-[#254d3a] text-sm font-semibold text-white transition hover:bg-[#1d3e2e] disabled:cursor-not-allowed disabled:bg-[#aab4ad]"
-                  >
-                    {isLoading && (
-                      <Loader2
-                        className="animate-spin"
-                        size={16}
-                        aria-hidden="true"
-                      />
-                    )}
-                    {authMode === "login" ? "Login" : "Create account"}
-                  </button>
-
-                  {error && (
-                    <p className="rounded-md border border-[#e2b6a8] bg-[#fff2ee] px-3 py-2 text-xs text-[#8a3a24]">
-                      {error}
-                    </p>
-                  )}
-
-                  <div className="flex items-center gap-2 text-xs text-[#647069]">
-                    <span className="h-px flex-1 bg-[#dbe2d8]" />
-                    Google
-                    <span className="h-px flex-1 bg-[#dbe2d8]" />
-                  </div>
-
-                  {googleClientId ? (
-                    <div
-                      ref={googleButtonRef}
-                      className={`min-h-10 ${googleReady ? "" : "opacity-70"}`}
-                    />
-                  ) : (
-                    <p className="rounded-md border border-dashed border-[#dbe2d8] px-3 py-2 text-xs text-[#647069]">
-                      Set NEXT_PUBLIC_GOOGLE_CLIENT_ID and GOOGLE_CLIENT_ID to
-                      enable Google login.
-                    </p>
-                  )}
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowLogin(false);
-                      setError("");
-                    }}
-                    className="flex h-10 w-full items-center justify-center gap-2 rounded-md border border-[#dbe2d8] bg-[#fbfcfa] text-sm font-semibold text-[#254d3a] transition hover:bg-white"
-                  >
-                    <ArrowLeft size={16} aria-hidden="true" />
-                    Back to chat
-                  </button>
-                </form>
-              )}
-
+            <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
               <div>
-                <div className="mb-3 flex items-center justify-between">
+                <div className="mb-2 flex items-center justify-between">
                   <p className="text-xs font-semibold uppercase text-[#7d6a3f]">
                     Lịch sử
                   </p>
@@ -808,13 +778,13 @@ export function ChatWorkspace({
                     />
                   )}
                 </div>
-                <div className="space-y-2">
+                <div className="space-y-1.5">
                   {!session ? (
-                    <p className="rounded-md border border-dashed border-[#dbe2d8] px-3 py-3 text-sm text-[#647069]">
+                    <p className="rounded-md border border-dashed border-[#dbe2d8] px-2.5 py-2 text-sm text-[#647069]">
                       Dang nhap de luu va mo lai lich su chat.
                     </p>
                   ) : conversations.length === 0 ? (
-                    <p className="rounded-md border border-dashed border-[#dbe2d8] px-3 py-3 text-sm text-[#647069]">
+                    <p className="rounded-md border border-dashed border-[#dbe2d8] px-2.5 py-2 text-sm text-[#647069]">
                       Chưa có hội thoại đã lưu.
                     </p>
                   ) : (
@@ -824,7 +794,7 @@ export function ChatWorkspace({
                       return (
                         <div
                           key={conversation.id}
-                          className={`group flex w-full items-center gap-3 rounded-md border px-3 py-3 text-left transition ${
+                          className={`group flex w-full items-center gap-2.5 rounded-md border px-2.5 py-2 text-left transition ${
                             isActive
                               ? "border-[#8eb08f] bg-[#eef5ec]"
                               : "border-transparent hover:border-[#dbe2d8] hover:bg-white"
@@ -833,18 +803,22 @@ export function ChatWorkspace({
                           <button
                             type="button"
                             onClick={() => void openConversation(conversation.id)}
-                            className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                            className="flex min-w-0 flex-1 items-center gap-2.5 text-left"
+                            title={conversation.title}
                           >
                             <MessageSquare
                               className="shrink-0 text-[#254d3a]"
-                              size={18}
+                              size={16}
                               aria-hidden="true"
                             />
                             <span className="min-w-0 flex-1">
                               <span className="block truncate text-sm font-semibold">
                                 {conversation.title}
                               </span>
-                              <span className="block truncate text-xs text-[#647069]">
+                              <span
+                                className="block truncate text-xs text-[#647069]"
+                                title={conversation.model ?? "local model"}
+                              >
                                 {conversation.model ?? "local model"}
                               </span>
                             </span>
@@ -854,11 +828,11 @@ export function ChatWorkspace({
                             onClick={(event) =>
                               void deleteConversation(event, conversation.id)
                             }
-                            className="flex size-8 shrink-0 items-center justify-center rounded-md text-[#7d877f] opacity-100 transition hover:bg-[#f2e9e2] hover:text-[#8a3a24] lg:opacity-0 lg:group-hover:opacity-100"
+                            className="flex size-7 shrink-0 items-center justify-center rounded-md text-[#7d877f] opacity-100 transition hover:bg-[#f2e9e2] hover:text-[#8a3a24] lg:opacity-0 lg:group-hover:opacity-100"
                             aria-label="Xoá hội thoại"
                             title="Xoá hội thoại"
                           >
-                            <Trash2 size={15} aria-hidden="true" />
+                            <Trash2 size={14} aria-hidden="true" />
                           </button>
                         </div>
                       );
@@ -867,38 +841,11 @@ export function ChatWorkspace({
                 </div>
               </div>
 
-              <div className="mt-6">
-                <p className="mb-3 text-xs font-semibold uppercase text-[#7d6a3f]">
-                  Admin
-                </p>
-                <Link
-                  href="/knowledge"
-                  className="flex w-full items-center gap-3 rounded-md border border-[#dbe2d8] bg-white px-3 py-3 text-left text-sm transition hover:border-[#b8c9b6] hover:bg-[#f7faf5]"
-                >
-                  <Database
-                    className="shrink-0 text-[#254d3a]"
-                    size={18}
-                    aria-hidden="true"
-                  />
-                  <span className="min-w-0 flex-1">
-                    <span className="block font-semibold">Knowledge admin</span>
-                    <span className="block truncate text-xs text-[#647069]">
-                      Manage company private data
-                    </span>
-                  </span>
-                  <ChevronRight
-                    className="shrink-0 text-[#7d877f]"
-                    size={16}
-                    aria-hidden="true"
-                  />
-                </Link>
-              </div>
-
-              <div className="mt-6">
-                <p className="mb-3 text-xs font-semibold uppercase text-[#7d6a3f]">
+              <div className="mt-4">
+                <p className="mb-2 text-xs font-semibold uppercase text-[#7d6a3f]">
                   Chủ đề
                 </p>
-                <div className="space-y-2">
+                <div className="space-y-1">
                   {topics.map((topic) => {
                     const Icon = topic.icon;
                     const isActive = topic.title === activeTopic;
@@ -908,7 +855,8 @@ export function ChatWorkspace({
                         key={topic.title}
                         type="button"
                         onClick={() => selectTopic(topic.title)}
-                        className={`flex w-full items-center gap-3 rounded-md border px-3 py-3 text-left transition ${
+                        title={`${topic.title}: ${topic.description}`}
+                        className={`flex w-full items-center gap-2.5 rounded-md border px-2.5 py-2 text-left transition ${
                           isActive
                             ? "border-[#8eb08f] bg-[#eef5ec]"
                             : "border-transparent hover:border-[#dbe2d8] hover:bg-white"
@@ -916,14 +864,20 @@ export function ChatWorkspace({
                       >
                         <Icon
                           className="shrink-0 text-[#254d3a]"
-                          size={20}
+                          size={17}
                           aria-hidden="true"
                         />
                         <span className="min-w-0 flex-1">
-                          <span className="block text-sm font-semibold">
+                          <span
+                            className="block truncate text-sm font-semibold"
+                            title={topic.title}
+                          >
                             {topic.title}
                           </span>
-                          <span className="block truncate text-xs text-[#647069]">
+                          <span
+                            className="block truncate text-xs text-[#647069]"
+                            title={topic.description}
+                          >
                             {topic.description}
                           </span>
                         </span>
@@ -938,11 +892,11 @@ export function ChatWorkspace({
                 </div>
               </div>
 
-              <div className="mt-6">
-                <p className="mb-3 text-xs font-semibold uppercase text-[#7d6a3f]">
+              <div className="mt-4">
+                <p className="mb-2 text-xs font-semibold uppercase text-[#7d6a3f]">
                   Câu hỏi theo chủ đề
                 </p>
-                <div className="space-y-2">
+                <div className="space-y-1.5">
                   {activeQuestions.map((question) => (
                     <button
                       key={question}
@@ -950,13 +904,115 @@ export function ChatWorkspace({
                       onClick={() =>
                         void sendMessage(question, { startNewConversation: true })
                       }
-                      className="w-full rounded-md border border-[#dbe2d8] bg-white px-3 py-3 text-left text-sm leading-5 text-[#2b332f] transition hover:border-[#b8c9b6] hover:bg-[#f7faf5]"
+                      title={question}
+                      className="w-full rounded-md border border-[#dbe2d8] bg-white px-2.5 py-2 text-left text-sm leading-5 text-[#2b332f] transition hover:border-[#b8c9b6] hover:bg-[#f7faf5]"
                     >
                       {question}
                     </button>
                   ))}
                 </div>
               </div>
+            </div>
+
+            <div className="relative shrink-0 border-t border-[#dbe2d8] bg-[#fbfcfa] p-3">
+              {showLogin && (
+                <div className="absolute bottom-[64px] left-3 right-3 z-20 rounded-lg border border-[#dbe2d8] bg-white p-3 shadow-xl">
+                  {session ? (
+                    <div className="space-y-2">
+                      <div className="border-b border-[#e4e9e1] pb-2">
+                        <p
+                          className="truncate text-sm font-semibold"
+                          title={profileName}
+                        >
+                          {profileName}
+                        </p>
+                        <p
+                          className="mt-1 truncate text-sm text-[#647069]"
+                          title={profileEmail}
+                        >
+                          {profileEmail}
+                        </p>
+                      </div>
+
+                      {session.role === "admin" && (
+                        <div className="space-y-1">
+                          <Link
+                            href="/knowledge"
+                            onClick={() => setShowLogin(false)}
+                            className="flex h-9 items-center gap-2.5 rounded-md px-2 text-sm transition hover:bg-[#f2f5f0]"
+                          >
+                            <Database size={16} aria-hidden="true" />
+                            Knowledge admin
+                          </Link>
+                          <Link
+                            href="/admin/users"
+                            onClick={() => setShowLogin(false)}
+                            className="flex h-9 items-center gap-2.5 rounded-md px-2 text-sm transition hover:bg-[#f2f5f0]"
+                          >
+                            <User size={16} aria-hidden="true" />
+                            User management
+                          </Link>
+                        </div>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={logout}
+                        className="flex h-9 w-full items-center justify-center gap-2 rounded-md border border-[#dbe2d8] bg-[#fbfcfa] text-sm font-semibold text-[#254d3a] transition hover:bg-white"
+                      >
+                        <LogOut size={16} aria-hidden="true" />
+                        Sign out
+                      </button>
+                    </div>
+                  ) : (
+                    authPanel
+                  )}
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={() => {
+                  setShowLogin((current) => !current);
+                  setError("");
+                }}
+                className="flex h-12 w-full items-center gap-2.5 rounded-md px-2 text-left transition hover:bg-[#eef2ec]"
+                aria-expanded={showLogin}
+                title={`${profileName} - ${profileEmail}`}
+              >
+                <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-[#254d3a] text-sm font-semibold text-white">
+                  {profileInitial}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span
+                    className="block truncate text-sm font-semibold"
+                    title={profileName}
+                  >
+                    {profileName}
+                  </span>
+                  <span
+                    className="block truncate text-xs text-[#647069]"
+                    title={profileRole}
+                  >
+                    {profileRole}
+                  </span>
+                </span>
+                {session ? (
+                  <ChevronRight
+                    className={`shrink-0 text-[#7d877f] transition ${
+                      showLogin ? "-rotate-90" : ""
+                    }`}
+                    size={16}
+                    aria-hidden="true"
+                  />
+                ) : (
+                  <LogIn
+                    className="shrink-0 text-[#254d3a]"
+                    size={17}
+                    aria-hidden="true"
+                  />
+                )}
+              </button>
             </div>
           </div>
         </aside>
