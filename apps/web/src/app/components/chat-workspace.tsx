@@ -145,6 +145,54 @@ const starterMessages: Message[] = [
 
 const defaultGoogleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ?? "";
 
+function renderInlineMarkdown(text: string) {
+  const parts = text.split(/(\*\*[^*]+\*\*)/g);
+
+  return parts.map((part, index) => {
+    if (part.startsWith("**") && part.endsWith("**") && part.length > 4) {
+      return (
+        <strong key={`${part}-${index}`} className="font-semibold">
+          {part.slice(2, -2)}
+        </strong>
+      );
+    }
+
+    return part;
+  });
+}
+
+function renderMessageContent(content: string) {
+  return content.split("\n").map((line, index) => {
+    const trimmed = line.trim();
+
+    if (!trimmed) {
+      return <div key={`blank-${index}`} className="h-3" />;
+    }
+
+    const bulletMatch = trimmed.match(/^[-*]\s+(.+)$/);
+    if (bulletMatch) {
+      return (
+        <div key={`${trimmed}-${index}`} className="flex gap-2">
+          <span className="mt-[0.45em] size-1.5 shrink-0 rounded-full bg-current opacity-70" />
+          <span>{renderInlineMarkdown(bulletMatch[1])}</span>
+        </div>
+      );
+    }
+
+    const numberedMatch = trimmed.match(/^(\d+)\.\s+(.+)$/);
+    if (numberedMatch) {
+      return (
+        <div key={`${trimmed}-${index}`} className="flex gap-2">
+          <span className="shrink-0 tabular-nums">{numberedMatch[1]}.</span>
+          <span>{renderInlineMarkdown(numberedMatch[2])}</span>
+        </div>
+      );
+    }
+
+    return <div key={`${trimmed}-${index}`}>{renderInlineMarkdown(line)}</div>;
+  });
+}
+
 export function ChatWorkspace({
   initialConversationId = null,
 }: {
@@ -332,7 +380,7 @@ export function ChatWorkspace({
       window.google.accounts.id.renderButton(googleButtonRef.current, {
         theme: "outline",
         size: "large",
-        width: 286,
+        width: 216,
         text: authMode === "register" ? "signup_with" : "signin_with",
       });
       setGoogleReady(true);
@@ -718,7 +766,9 @@ export function ChatWorkspace({
       {googleClientId ? (
         <div
           ref={googleButtonRef}
-          className={`min-h-9 ${googleReady ? "" : "opacity-70"}`}
+          className={`google-signin-compact flex min-h-9 w-full justify-center [&>div]:max-w-full [&_iframe]:max-w-full ${
+            googleReady ? "" : "opacity-70"
+          }`}
         />
       ) : (
         <p className="rounded-md border border-dashed border-[#dbe2d8] px-3 py-2 text-xs text-[#647069]">
@@ -757,7 +807,7 @@ export function ChatWorkspace({
               <button
                 type="button"
                 onClick={startNewChat}
-                className="mt-3 flex h-9 w-full items-center justify-center gap-2 rounded-md bg-[#254d3a] text-sm font-semibold text-white transition hover:bg-[#1d3e2e]"
+                className="mt-3 flex h-9 w-full items-center justify-start gap-2 rounded-md px-2 text-sm font-medium text-[#1f2723] transition hover:bg-[#eef5ec]"
               >
                 <Plus size={16} aria-hidden="true" />
                 Chat mới
@@ -797,7 +847,7 @@ export function ChatWorkspace({
                           className={`group flex w-full items-center gap-2.5 rounded-md border px-2.5 py-2 text-left transition ${
                             isActive
                               ? "border-[#8eb08f] bg-[#eef5ec]"
-                              : "border-transparent hover:border-[#dbe2d8] hover:bg-white"
+                              : "border-transparent hover:bg-[#eef5ec]"
                           }`}
                         >
                           <button
@@ -859,7 +909,7 @@ export function ChatWorkspace({
                         className={`flex w-full items-center gap-2.5 rounded-md border px-2.5 py-2 text-left transition ${
                           isActive
                             ? "border-[#8eb08f] bg-[#eef5ec]"
-                            : "border-transparent hover:border-[#dbe2d8] hover:bg-white"
+                            : "border-transparent hover:bg-[#eef5ec]"
                         }`}
                       >
                         <Icon
@@ -905,7 +955,7 @@ export function ChatWorkspace({
                         void sendMessage(question, { startNewConversation: true })
                       }
                       title={question}
-                      className="w-full rounded-md border border-[#dbe2d8] bg-white px-2.5 py-2 text-left text-sm leading-5 text-[#2b332f] transition hover:border-[#b8c9b6] hover:bg-[#f7faf5]"
+                      className="w-full rounded-md border border-transparent bg-transparent px-2.5 py-2 text-left text-sm leading-5 text-[#2b332f] transition hover:bg-[#eef5ec]"
                     >
                       {question}
                     </button>
@@ -976,7 +1026,7 @@ export function ChatWorkspace({
                   setShowLogin((current) => !current);
                   setError("");
                 }}
-                className="flex h-12 w-full items-center gap-2.5 rounded-md px-2 text-left transition hover:bg-[#eef2ec]"
+                className="flex h-12 w-full items-center gap-2.5 rounded-md px-2 text-left transition hover:bg-[#eef5ec]"
                 aria-expanded={showLogin}
                 title={`${profileName} - ${profileEmail}`}
               >
@@ -1056,7 +1106,9 @@ export function ChatWorkspace({
                           : "border-[#dbe2d8] bg-white"
                       }`}
                     >
-                      <p className="whitespace-pre-wrap">{message.content}</p>
+                      <div className="space-y-1">
+                        {renderMessageContent(message.content)}
+                      </div>
                     </div>
                     {isUser && (
                       <div className="mt-1 flex size-9 shrink-0 items-center justify-center rounded-md bg-[#7d6a3f] text-white">
