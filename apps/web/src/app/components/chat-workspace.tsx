@@ -136,14 +136,16 @@ const topics: Topic[] = [
 ];
 
 const welcomeMessage =
-  "Chào mừng tới AI Lab local. Chọn một câu hỏi mẫu hoặc nhập trực tiếp để gửi tới Ollama qua NestJS.";
+  "Chào mừng tới AI Lab. Chọn một câu hỏi mẫu hoặc nhập trực tiếp nội dung để hỏi những điều bạn cần biết.";
 
 const starterMessages: Message[] = [];
 
 const defaultGoogleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ?? "";
 
 function isWelcomeMessage(message: Message) {
-  return message.role === "assistant" && message.content.trim() === welcomeMessage;
+  return (
+    message.role === "assistant" && message.content.trim() === welcomeMessage
+  );
 }
 
 function renderInlineMarkdown(text: string) {
@@ -212,9 +214,9 @@ export function ChatWorkspace({
   const [registerPassword, setRegisterPassword] = useState("");
   const [googleClientId, setGoogleClientId] = useState(defaultGoogleClientId);
   const [googleReady, setGoogleReady] = useState(false);
-  const [activeConversationId, setActiveConversationId] = useState<string | null>(
-    null,
-  );
+  const [activeConversationId, setActiveConversationId] = useState<
+    string | null
+  >(null);
   const [input, setInput] = useState("");
   const [activeTopic, setActiveTopic] = useState(topics[0].title);
   const [isLoading, setIsLoading] = useState(false);
@@ -411,50 +413,53 @@ export function ChatWorkspace({
     document.head.appendChild(script);
   }, [authMode, googleClientId, handleGoogleCredential, session, showLogin]);
 
-  const openConversation = useCallback(async function openConversation(
-    id: string,
-    options?: { replaceUrl?: boolean },
-  ) {
-    const requestId = openConversationRequestRef.current + 1;
-    openConversationRequestRef.current = requestId;
+  const openConversation = useCallback(
+    async function openConversation(
+      id: string,
+      options?: { replaceUrl?: boolean },
+    ) {
+      const requestId = openConversationRequestRef.current + 1;
+      openConversationRequestRef.current = requestId;
 
-    setActiveConversationId(id);
-    setMessages([]);
-    setHistoryLoading(true);
-    setError("");
+      setActiveConversationId(id);
+      setMessages([]);
+      setHistoryLoading(true);
+      setError("");
 
-    try {
-      const data = await requestJson<Conversation & { messages: Message[] }>(
-        `${apiUrl}/conversations/${id}`,
-        withAuthHeaders(),
-      );
+      try {
+        const data = await requestJson<Conversation & { messages: Message[] }>(
+          `${apiUrl}/conversations/${id}`,
+          withAuthHeaders(),
+        );
 
-      if (openConversationRequestRef.current !== requestId) {
-        return;
+        if (openConversationRequestRef.current !== requestId) {
+          return;
+        }
+
+        setActiveConversationId(data.id);
+        setMessages(data.messages.length > 0 ? data.messages : starterMessages);
+        if (options?.replaceUrl !== false) {
+          updateConversationUrl(data.id);
+        }
+      } catch (requestError) {
+        if (openConversationRequestRef.current !== requestId) {
+          return;
+        }
+
+        setMessages(starterMessages);
+        setError(
+          requestError instanceof Error
+            ? requestError.message
+            : "Không mở được hội thoại.",
+        );
+      } finally {
+        if (openConversationRequestRef.current === requestId) {
+          setHistoryLoading(false);
+        }
       }
-
-      setActiveConversationId(data.id);
-      setMessages(data.messages.length > 0 ? data.messages : starterMessages);
-      if (options?.replaceUrl !== false) {
-        updateConversationUrl(data.id);
-      }
-    } catch (requestError) {
-      if (openConversationRequestRef.current !== requestId) {
-        return;
-      }
-
-      setMessages(starterMessages);
-      setError(
-        requestError instanceof Error
-          ? requestError.message
-          : "Không mở được hội thoại.",
-      );
-    } finally {
-      if (openConversationRequestRef.current === requestId) {
-        setHistoryLoading(false);
-      }
-    }
-  }, [updateConversationUrl]);
+    },
+    [updateConversationUrl],
+  );
 
   useEffect(() => {
     if (
@@ -522,9 +527,8 @@ export function ChatWorkspace({
       return;
     }
 
-    const conversationId = !session || options?.startNewConversation
-      ? null
-      : activeConversationId;
+    const conversationId =
+      !session || options?.startNewConversation ? null : activeConversationId;
     const baseMessages = options?.startNewConversation
       ? starterMessages
       : messages.filter((message) => !isWelcomeMessage(message));
@@ -619,7 +623,9 @@ export function ChatWorkspace({
       !registerEmail.trim() ||
       registerPassword.length < 8
     ) {
-      setError("Name, valid email, and password with at least 8 chars are required.");
+      setError(
+        "Name, valid email, and password with at least 8 chars are required.",
+      );
       return;
     }
 
@@ -826,7 +832,9 @@ export function ChatWorkspace({
                   <h1 className="truncate text-base font-semibold">
                     AI Research Lab
                   </h1>
-                  <p className="truncate text-xs text-[#647069]">Local assistant</p>
+                  <p className="truncate text-xs text-[#647069]">
+                    Local AI Assistant
+                  </p>
                 </div>
               </div>
               <button
@@ -877,7 +885,9 @@ export function ChatWorkspace({
                         >
                           <button
                             type="button"
-                            onClick={() => void openConversation(conversation.id)}
+                            onClick={() =>
+                              void openConversation(conversation.id)
+                            }
                             className="flex min-w-0 flex-1 items-center gap-2.5 text-left"
                             title={conversation.title}
                           >
@@ -971,7 +981,9 @@ export function ChatWorkspace({
                       key={question}
                       type="button"
                       onClick={() =>
-                        void sendMessage(question, { startNewConversation: true })
+                        void sendMessage(question, {
+                          startNewConversation: true,
+                        })
                       }
                       title={question}
                       className="w-full rounded-md border border-transparent bg-transparent px-2.5 py-2 text-left text-sm leading-5 text-[#2b332f] transition hover:bg-[#eef5ec]"
@@ -1091,10 +1103,10 @@ export function ChatWorkspace({
             <div className="mx-auto flex max-w-5xl items-center justify-between gap-4">
               <div className="min-w-0">
                 <p className="text-sm font-semibold text-[#254d3a]">
-                  Local Assistant
+                  Local AI Assistant
                 </p>
                 <h2 className="truncate text-xl font-semibold">
-                  Chat với model Ollama
+                  Sản phẩm thử nghiệm
                 </h2>
                 <p className="mt-1 max-w-3xl truncate text-sm text-[#647069]">
                   {welcomeMessage}
@@ -1110,7 +1122,11 @@ export function ChatWorkspace({
             <div className="mx-auto flex max-w-5xl flex-col gap-4">
               {historyLoading && (
                 <div className="flex items-center gap-3 text-sm text-[#647069]">
-                  <Loader2 className="animate-spin" size={18} aria-hidden="true" />
+                  <Loader2
+                    className="animate-spin"
+                    size={18}
+                    aria-hidden="true"
+                  />
                   Đang tải hội thoại...
                 </div>
               )}
@@ -1150,8 +1166,12 @@ export function ChatWorkspace({
 
               {isLoading && (
                 <div className="flex items-center gap-3 text-sm text-[#647069]">
-                  <Loader2 className="animate-spin" size={18} aria-hidden="true" />
-                  Ollama đang suy nghĩ...
+                  <Loader2
+                    className="animate-spin"
+                    size={18}
+                    aria-hidden="true"
+                  />
+                  Đang suy nghĩ...
                 </div>
               )}
 
@@ -1165,7 +1185,10 @@ export function ChatWorkspace({
           </div>
 
           <div className="flex h-20 shrink-0 items-center border-t border-[#dbe2d8] bg-white px-4">
-            <form onSubmit={handleSubmit} className="mx-auto flex max-w-5xl gap-3">
+            <form
+              onSubmit={handleSubmit}
+              className="mx-auto flex w-full max-w-5xl gap-3"
+            >
               <textarea
                 value={input}
                 onChange={(event) => setInput(event.target.value)}
@@ -1183,7 +1206,11 @@ export function ChatWorkspace({
                 title="Gửi tin nhắn"
               >
                 {isLoading ? (
-                  <Loader2 className="animate-spin" size={20} aria-hidden="true" />
+                  <Loader2
+                    className="animate-spin"
+                    size={20}
+                    aria-hidden="true"
+                  />
                 ) : (
                   <Send size={20} aria-hidden="true" />
                 )}
