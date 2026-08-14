@@ -817,7 +817,7 @@ export function ChatWorkspace({
       <div className="flex h-full min-h-0 flex-col lg:flex-row">
         <aside className="shrink-0 border-b border-[#dbe2d8] bg-[#fbfcfa] lg:h-full lg:w-[280px] lg:border-b-0 lg:border-r">
           <div className="flex h-full flex-col">
-            <div className="border-b border-[#dbe2d8] px-4 py-3">
+            <div className="flex h-[104px] flex-col justify-center border-b border-[#dbe2d8] px-4">
               <div className="flex items-center gap-2.5">
                 <div className="flex size-9 items-center justify-center rounded-md bg-[#254d3a] text-white">
                   <Sparkles size={18} aria-hidden="true" />
@@ -983,9 +983,9 @@ export function ChatWorkspace({
               </div>
             </div>
 
-            <div className="relative shrink-0 border-t border-[#dbe2d8] bg-[#fbfcfa] p-3">
+            <div className="relative flex h-20 shrink-0 items-center border-t border-[#dbe2d8] bg-[#fbfcfa] px-3">
               {showLogin && (
-                <div className="absolute bottom-[64px] left-3 right-3 z-20 rounded-lg border border-[#dbe2d8] bg-white p-3 shadow-xl">
+                <div className="absolute bottom-[84px] left-3 right-3 z-20 rounded-lg border border-[#dbe2d8] bg-white p-3 shadow-xl">
                   {session ? (
                     <div className="space-y-2">
                       <div className="border-b border-[#e4e9e1] pb-2">
@@ -1087,7 +1087,7 @@ export function ChatWorkspace({
         </aside>
 
         <section className="flex min-h-0 min-w-0 flex-1 flex-col">
-          <header className="shrink-0 border-b border-[#dbe2d8] bg-white/85 px-5 py-4 backdrop-blur">
+          <header className="flex h-[104px] shrink-0 items-center border-b border-[#dbe2d8] bg-white/85 px-5 backdrop-blur">
             <div className="mx-auto flex max-w-5xl items-center justify-between gap-4">
               <div className="min-w-0">
                 <p className="text-sm font-semibold text-[#254d3a]">
@@ -1164,7 +1164,7 @@ export function ChatWorkspace({
             </div>
           </div>
 
-          <div className="shrink-0 border-t border-[#dbe2d8] bg-white px-4 py-4">
+          <div className="flex h-20 shrink-0 items-center border-t border-[#dbe2d8] bg-white px-4">
             <form onSubmit={handleSubmit} className="mx-auto flex max-w-5xl gap-3">
               <textarea
                 value={input}
