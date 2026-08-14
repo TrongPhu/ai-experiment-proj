@@ -1200,7 +1200,7 @@ export function ChatWorkspace({
                 onKeyDown={handleKeyDown}
                 disabled={historyLoading}
                 rows={1}
-                placeholder="Nhập câu hỏi cho Ollama..."
+                placeholder="Nhập nội dung câu hỏi..."
                 className="min-h-12 flex-1 resize-none rounded-md border border-[#cfd8cc] bg-[#fbfcfa] px-4 py-3 text-sm leading-6 outline-none transition placeholder:text-[#89948d] focus:border-[#709772] focus:bg-white focus:ring-2 focus:ring-[#c7dcc3] disabled:cursor-not-allowed disabled:bg-[#edf1eb]"
               />
               <button
