@@ -42,6 +42,7 @@ export class KnowledgeService {
     process.env.OLLAMA_BASE_URL ?? 'http://localhost:11434';
   private readonly embeddingModel =
     process.env.OLLAMA_EMBEDDING_MODEL ?? 'bge-m3';
+  private readonly ollamaNumGpu = Number(process.env.OLLAMA_NUM_GPU ?? 0);
 
   constructor(private readonly database: DatabaseService) {}
 
@@ -187,6 +188,9 @@ export class KnowledgeService {
       body: JSON.stringify({
         model: this.embeddingModel,
         prompt: input,
+        options: {
+          num_gpu: this.ollamaNumGpu,
+        },
       }),
     });
 

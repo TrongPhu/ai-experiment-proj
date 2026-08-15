@@ -94,6 +94,7 @@ OLLAMA_BASE_URL=http://localhost:11434
 OLLAMA_MODEL=gemma3:1b
 OLLAMA_EMBEDDING_MODEL=bge-m3
 OLLAMA_TIMEOUT_MS=300000
+OLLAMA_NUM_GPU=0
 KNOWLEDGE_CHUNK_SIZE=1200
 DB_HOST=localhost
 DB_PORT=3306
@@ -210,6 +211,14 @@ OLLAMA_TIMEOUT_MS=600000
 ```
 
 Or switch to a smaller model.
+
+If Ollama returns a CUDA/PTX error such as `unsupported toolchain`, force CPU execution:
+
+```env
+OLLAMA_NUM_GPU=0
+```
+
+Then restart the backend with `npm run dev`. This is slower than GPU mode, but it avoids crashes caused by an incompatible NVIDIA driver/CUDA/Ollama build.
 
 ### Use A Model Not Listed In The Ollama Library
 

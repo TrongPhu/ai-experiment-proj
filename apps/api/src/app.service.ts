@@ -2,6 +2,7 @@ import {
   BadGatewayException,
   BadRequestException,
   Injectable,
+  Logger,
 } from '@nestjs/common';
 import { AuthService } from './auth/auth.service';
 import type {
@@ -39,6 +40,8 @@ interface OllamaChatResponse {
 
 @Injectable()
 export class AppService {
+  private readonly logger = new Logger(AppService.name);
+
   constructor(
     private readonly auth: AuthService,
     private readonly chatHistory: ChatHistoryService,
@@ -51,13 +54,14 @@ export class AppService {
   private readonly requestTimeoutMs = Number(
     process.env.OLLAMA_TIMEOUT_MS ?? 300_000,
   );
+  private readonly ollamaNumGpu = Number(process.env.OLLAMA_NUM_GPU ?? 0);
 
   async chat(request: ChatRequestDto, user?: AuthUser) {
     const normalizedMessages = this.normalizeMessages(request.messages);
     const model = request.model?.trim() || this.defaultModel;
     const userMessage = this.getLatestUserMessage(normalizedMessages);
     const context = user
-      ? await this.knowledge.search(userMessage.content)
+      ? await this.searchKnowledgeForChat(userMessage.content)
       : [];
     const messages = this.withDefaultSystemPrompt(normalizedMessages, context);
     const conversationId = user
@@ -78,6 +82,9 @@ export class AppService {
           model,
           messages,
           stream: false,
+          options: {
+            num_gpu: this.ollamaNumGpu,
+          },
         }),
         signal: controller.signal,
       });
@@ -264,6 +271,20 @@ export class AppService {
       },
       ...messages,
     ];
+  }
+
+  private async searchKnowledgeForChat(question: string) {
+    try {
+      return await this.knowledge.search(question);
+    } catch (error) {
+      this.logger.warn(
+        `Private knowledge search failed; continuing without RAG context. ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+
+      return [];
+    }
   }
 
   private getLatestUserMessage(messages: ChatMessage[]) {

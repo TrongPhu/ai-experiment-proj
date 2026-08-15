@@ -102,6 +102,7 @@ OLLAMA_BASE_URL=http://localhost:11434
 OLLAMA_MODEL=gemma3:1b
 OLLAMA_EMBEDDING_MODEL=bge-m3
 OLLAMA_TIMEOUT_MS=600000
+OLLAMA_NUM_GPU=0
 KNOWLEDGE_CHUNK_SIZE=1200
 DB_HOST=localhost
 DB_PORT=3306
@@ -519,6 +520,28 @@ Sau do restart app:
 ```bash
 npm run dev
 ```
+
+### Loi CUDA Hoac Unsupported PTX Toolchain
+
+Neu thay loi giong:
+
+```text
+CUDA error: the provided PTX was compiled with an unsupported toolchain
+```
+
+Day la loi Ollama/GPU driver, khong phai loi frontend. Cach xu ly nhanh la ep Ollama chay CPU trong `apps/api/.env`:
+
+```env
+OLLAMA_NUM_GPU=0
+```
+
+Sau do restart app:
+
+```bash
+npm run dev
+```
+
+Chay CPU se cham hon GPU, nhung tranh crash do CUDA/NVIDIA driver khong tuong thich.
 
 ### Loi Backend Khong Ket Noi MySQL
 
